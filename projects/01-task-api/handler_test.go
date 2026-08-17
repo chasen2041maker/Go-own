@@ -37,14 +37,26 @@ func TestHealthHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("unsupported method returns method not allowed", func(t *testing.T) {
-		request := httptest.NewRequest(http.MethodPost, "/health", nil)
-		response := httptest.NewRecorder()
+	methods := []string{
+		http.MethodPost,
+		http.MethodPut,
+		http.MethodPatch,
+		http.MethodDelete,
+		http.MethodHead,
+	}
+	for _, method := range methods {
+		t.Run(method+" returns method not allowed", func(t *testing.T) {
+			request := httptest.NewRequest(method, "/health", nil)
+			response := httptest.NewRecorder()
 
-		newHandler().ServeHTTP(response, request)
+			newHandler().ServeHTTP(response, request)
 
-		if response.Code != http.StatusMethodNotAllowed {
-			t.Fatalf("status code = %d, want %d", response.Code, http.StatusMethodNotAllowed)
-		}
-	})
+			if response.Code != http.StatusMethodNotAllowed {
+				t.Fatalf("status code = %d, want %d", response.Code, http.StatusMethodNotAllowed)
+			}
+			if got, want := response.Header().Get("Allow"), http.MethodGet; got != want {
+				t.Fatalf("Allow = %q, want %q", got, want)
+			}
+		})
+	}
 }

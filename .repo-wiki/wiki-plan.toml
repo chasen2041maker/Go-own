@@ -6,7 +6,7 @@ max_context_documents = 4
 
 [scope]
 include = ["*.md", "**/*.md"]
-exclude = [".git/**"]
+exclude = [".git/**", "practice/**/tasks.md"]
 historical = ["docs/plans/spec-go-learning-foundation.md"]
 
 [[documents]]
@@ -24,6 +24,14 @@ title = "Go 实战项目集重构方案"
 role = "canonical"
 goal = "约束练习归档、多项目结构和最小 Task API 起点"
 tags = ["architecture", "refactor", "projects"]
+
+[[documents]]
+id = "project-review-feedback"
+path = "docs/plans/spec-address-review-feedback.md"
+title = "项目集审查反馈落实规格"
+role = "canonical"
+goal = "约束 Task API 网络边界、HTTP 契约测试和三个项目的验收口径"
+tags = ["review", "testing", "projects"]
 
 [[routes]]
 id = "project-structure"

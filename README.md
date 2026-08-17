@@ -20,6 +20,8 @@
 go version
 ```
 
+本仓库最低需要 Go 1.26，命令输出应为 `go1.26` 或更高版本。旧版 Go 可能尝试自动下载所需工具链；如果下载失败，请先检查网络和 `GOTOOLCHAIN` 配置，不要把工具链错误误认为项目代码错误。
+
 启动当前的 Task API：
 
 ```powershell
@@ -29,8 +31,10 @@ go run ./projects/01-task-api
 另开一个 PowerShell 窗口检查服务：
 
 ```powershell
-Invoke-RestMethod http://localhost:8080/health
+Invoke-RestMethod http://127.0.0.1:8080/health
 ```
+
+当前学习服务只监听本机回环地址 `127.0.0.1:8080`，局域网中的其他设备无法直接访问。
 
 验证整个仓库：
 
