@@ -1,0 +1,16 @@
+# Go 构建产物
+*.exe
+*.test
+*.out
+/bin/
+/dist/
+
+# 测试与临时文件
+coverage.out
+*.tmp
+
+# 编辑器与操作系统文件
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
