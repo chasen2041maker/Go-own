@@ -1,0 +1,36 @@
+[wiki]
+version = 1
+language = "zh-CN"
+portal = "docs/README.md"
+max_context_documents = 4
+
+[scope]
+include = ["*.md", "**/*.md"]
+exclude = [".git/**"]
+historical = ["docs/plans/spec-go-learning-foundation.md"]
+
+[[documents]]
+id = "docs-home"
+path = "docs/README.md"
+title = "项目文档入口"
+role = "portal"
+goal = "集中导航学习计划和项目设计文档"
+tags = ["docs", "learning"]
+
+[[documents]]
+id = "project-collection-refactor"
+path = "docs/plans/spec-refactor-learning-structure.md"
+title = "Go 实战项目集重构方案"
+role = "canonical"
+goal = "约束练习归档、多项目结构和最小 Task API 起点"
+tags = ["architecture", "refactor", "projects"]
+
+[[routes]]
+id = "project-structure"
+keywords = ["项目结构", "目录", "重构", "project"]
+path_globs = ["README.md", "practice/**", "projects/**", "docs/**"]
+context_docs = ["docs-home", "@nearest-readme"]
+suggest_update_docs = ["docs-home", "@nearest-readme"]
+gate_globs = []
+require_update_any = []
+require_update_all = []

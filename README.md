@@ -1,45 +1,46 @@
-# Go 学习项目
+# Go 实战项目集
 
-这是一个按照 Go 学习顺序整理的练习仓库。每个学习主题都有自己的文件夹，练习代码直接放在对应主题的目录中，不需要把所有文件堆在项目根目录。
+这个仓库用真实小项目学习 Go。`projects/` 是当前学习主线，`practice/` 保存以前手写的语法练习；不需要先看完所有知识点，再开始写项目。
 
-## 开始学习
+## 项目路线
 
-先确认已经安装 Go：
+| 项目 | 状态 | 主要训练内容 |
+| --- | --- | --- |
+| [Task API](projects/01-task-api/README.md) | 进行中 | HTTP、JSON、错误处理、测试、并发安全、文件持久化 |
+| [并发网址检测器](projects/02-url-checker/README.md) | 待开始 | goroutine、channel、Worker Pool、Context、超时 |
+| [日志分析器](projects/03-log-analyzer/README.md) | 待开始 | 文件读取、解析、统计、并发处理、基准测试 |
+
+详细顺序和统一命令见 [projects/README.md](projects/README.md)。
+
+## 现在开始
+
+确认已经安装 Go：
 
 ```powershell
 go version
 ```
 
-运行第一个示例：
+启动当前的 Task API：
 
 ```powershell
-go run .\learn\01-基础语法\01-hello\main.go
+go run ./projects/01-task-api
 ```
 
-运行全部测试和静态检查：
+另开一个 PowerShell 窗口检查服务：
 
 ```powershell
-go test .\learn\01-基础语法\01-hello\main.go .\learn\01-基础语法\01-hello\main_test.go
-go vet .\learn\01-基础语法\01-hello\main.go .\learn\01-基础语法\01-hello\main_test.go
+Invoke-RestMethod http://localhost:8080/health
 ```
 
-## 文件夹怎么用
+验证整个仓库：
 
-| 文件夹 | 用途 |
-| --- | --- |
-| `learn/` | 按学习顺序存放 Go 基础练习，每个主题继续按编号细分 |
-| `projects/` | 把多个知识点组合起来做完整的小项目 |
-| `cmd/` | 未来可发布程序的入口，每个子目录对应一个可执行程序 |
-| `internal/` | 只供本项目使用的公共代码 |
-| `pkg/` | 确实需要被其他项目复用时再使用的公开代码 |
-| `docs/` | 学习笔记、设计记录和资料整理 |
+```powershell
+go test ./...
+go vet ./...
+```
 
-## 新增练习的规则
+## 学习方式
 
-1. 先判断练习属于哪个主题，再放进对应的中文分类目录。
-2. 每个独立练习使用自己的编号目录，例如 `02-变量与常量/01-声明变量`。
-3. 练习目录至少包含一个 `main.go` 和一个中文 `README.md`。
-4. 可复用的函数要同时补充 `_test.go` 测试文件。
-5. 不把编译产物、下载的依赖和编辑器配置提交到仓库。
+每次只完成 README 中的一个里程碑：先手写，再运行，最后让 GPT 按验收条件审查。项目之间暂时不共享业务代码，也不使用框架、数据库或第三方依赖。
 
-学习目录和练习目录全部使用中文，方便你按主题查找。由于 Go module 不接受含中文的包导入路径，运行或测试练习时请直接传入 `.go` 文件路径，不使用 `go test ./...`。详细学习路线请查看 [`learn/README.md`](learn/README.md)。
+旧练习都保存在 [practice/README.md](practice/README.md)，它们是复习资料，不再决定主学习顺序。
