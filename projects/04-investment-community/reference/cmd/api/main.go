@@ -13,6 +13,8 @@ import (
 
 	"go-own/projects/04-investment-community/reference/internal/httpapi"
 	"go-own/projects/04-investment-community/reference/internal/platform"
+	mysqlstore "go-own/projects/04-investment-community/reference/internal/store/mysql"
+	"go-own/projects/04-investment-community/reference/internal/usecase"
 )
 
 func main() {
@@ -33,9 +35,26 @@ func main() {
 	database.SetMaxIdleConns(5)
 	database.SetConnMaxLifetime(5 * time.Minute)
 	database.SetConnMaxIdleTime(1 * time.Minute)
+	users, err := mysqlstore.New(database)
+	if err != nil {
+		slog.Error("create user store", "error", err)
+		os.Exit(1)
+	}
+	tokens, err := platform.NewTokenManager(
+		config.JWTSecret, config.JWTIssuer, config.JWTAudience, platform.DefaultAccessTokenTTL,
+	)
+	if err != nil {
+		slog.Error("create token manager", "error", err)
+		os.Exit(1)
+	}
+	auth, err := usecase.NewAuthService(users, platform.NewPasswordHasher(), tokens)
+	if err != nil {
+		slog.Error("create authentication service", "error", err)
+		os.Exit(1)
+	}
 
 	// API 可以先启动，再由 /readyz 诚实反映数据库状态；迁移由独立命令执行。
-	router := httpapi.NewRouter(database, config.ReadinessTimeout)
+	router := httpapi.NewRouter(database, config.ReadinessTimeout, auth)
 	server := platform.NewHTTPServer(config, router)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
