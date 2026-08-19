@@ -16,6 +16,31 @@ type ReadinessChecker interface {
 
 // NewRouter 组装运维端点和公共安全中间件。
 func NewRouter(checker ReadinessChecker, readinessTimeout time.Duration, authApplications ...AuthApplication) http.Handler {
+	var authApplication AuthApplication
+	if len(authApplications) > 0 {
+		authApplication = authApplications[0]
+	}
+	return newRouter(checker, readinessTimeout, authApplication, nil, nil)
+}
+
+// NewRouterWithCommunity 保留原有 NewRouter 的窄测试入口，同时为业务进程显式装配本阶段能力。
+func NewRouterWithCommunity(
+	checker ReadinessChecker,
+	readinessTimeout time.Duration,
+	authApplication AuthApplication,
+	communityApplication CommunityApplication,
+	cursors *CursorCodec,
+) http.Handler {
+	return newRouter(checker, readinessTimeout, authApplication, communityApplication, cursors)
+}
+
+func newRouter(
+	checker ReadinessChecker,
+	readinessTimeout time.Duration,
+	authApplication AuthApplication,
+	communityApplication CommunityApplication,
+	cursors *CursorCodec,
+) http.Handler {
 	if readinessTimeout <= 0 {
 		readinessTimeout = defaultReadinessTimeout
 	}
@@ -23,11 +48,10 @@ func NewRouter(checker ReadinessChecker, readinessTimeout time.Duration, authApp
 	mux := http.NewServeMux()
 	mux.Handle("/healthz", requireMethod(http.MethodGet, http.HandlerFunc(healthz)))
 	mux.Handle("/readyz", requireMethod(http.MethodGet, http.HandlerFunc(readyz(checker, readinessTimeout))))
-	var authApplication AuthApplication
-	if len(authApplications) > 0 {
-		authApplication = authApplications[0]
-	}
 	registerAuthRoutes(mux, authApplication)
+	if communityApplication != nil {
+		registerCommunityRoutes(mux, authApplication, communityApplication, cursors)
+	}
 	mux.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
 		WriteError(writer, request, http.StatusNotFound, "not_found", "资源不存在", nil)
 	})

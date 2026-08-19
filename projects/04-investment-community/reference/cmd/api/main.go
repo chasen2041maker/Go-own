@@ -35,9 +35,9 @@ func main() {
 	database.SetMaxIdleConns(5)
 	database.SetConnMaxLifetime(5 * time.Minute)
 	database.SetConnMaxIdleTime(1 * time.Minute)
-	users, err := mysqlstore.New(database)
+	store, err := mysqlstore.New(database)
 	if err != nil {
-		slog.Error("create user store", "error", err)
+		slog.Error("create MySQL store", "error", err)
 		os.Exit(1)
 	}
 	tokens, err := platform.NewTokenManager(
@@ -47,14 +47,24 @@ func main() {
 		slog.Error("create token manager", "error", err)
 		os.Exit(1)
 	}
-	auth, err := usecase.NewAuthService(users, platform.NewPasswordHasher(), tokens)
+	auth, err := usecase.NewAuthService(store, platform.NewPasswordHasher(), tokens)
 	if err != nil {
 		slog.Error("create authentication service", "error", err)
 		os.Exit(1)
 	}
+	community, err := usecase.NewCommunityService(store)
+	if err != nil {
+		slog.Error("create community service", "error", err)
+		os.Exit(1)
+	}
+	cursors, err := httpapi.NewCursorCodec(config.JWTSecret, 24*time.Hour)
+	if err != nil {
+		slog.Error("create cursor codec", "error", err)
+		os.Exit(1)
+	}
 
 	// API 可以先启动，再由 /readyz 诚实反映数据库状态；迁移由独立命令执行。
-	router := httpapi.NewRouter(database, config.ReadinessTimeout, auth)
+	router := httpapi.NewRouterWithCommunity(database, config.ReadinessTimeout, auth, community, cursors)
 	server := platform.NewHTTPServer(config, router)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
