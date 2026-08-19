@@ -2,9 +2,12 @@
 package migrations
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"embed"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"path/filepath"
@@ -19,9 +22,10 @@ var migrationFS embed.FS
 
 // File 表示一份从内嵌文件系统读取的不可变 Migration。
 type File struct {
-	Version int64
-	Name    string
-	SQL     string
+	Version  int64
+	Name     string
+	SQL      string
+	Checksum string
 }
 
 // Files 按版本返回 Migration。每次都创建新切片，避免测试或工具修改进程级数据源。
@@ -46,7 +50,12 @@ func Files() ([]File, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read migration %q: %w", base, err)
 		}
-		files = append(files, File{Version: version, Name: parts[1], SQL: string(contents)})
+		files = append(files, File{
+			Version:  version,
+			Name:     parts[1],
+			SQL:      string(contents),
+			Checksum: migrationChecksum(contents),
+		})
 	}
 
 	sort.Slice(files, func(i, j int) bool { return files[i].Version < files[j].Version })
@@ -56,6 +65,15 @@ func Files() ([]File, error) {
 		}
 	}
 	return files, nil
+}
+
+// migrationChecksum 先统一 Git 在不同操作系统可能转换的换行符，再计算不可变摘要。
+// 这样同一提交在 Windows 与 Linux 部署时不会误判已执行 Migration 被篡改。
+func migrationChecksum(contents []byte) string {
+	normalized := bytes.ReplaceAll(contents, []byte("\r\n"), []byte("\n"))
+	normalized = bytes.ReplaceAll(normalized, []byte("\r"), []byte("\n"))
+	checksum := sha256.Sum256(normalized)
+	return hex.EncodeToString(checksum[:])
 }
 
 // Apply 执行尚未登记到 schema_migrations 的全部 Migration。
@@ -97,8 +115,9 @@ func Apply(ctx context.Context, db *sql.DB) (resultErr error) {
 
 	if _, err := connection.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS schema_migrations (
-    version BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+    version BIGINT NOT NULL PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
+    checksum CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     applied_at DATETIME(6) NOT NULL DEFAULT (UTC_TIMESTAMP(6))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci`); err != nil {
 		return fmt.Errorf("create schema_migrations: %w", err)
@@ -109,9 +128,19 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 		return err
 	}
 	for _, file := range files {
-		var exists int
-		err := connection.QueryRowContext(ctx, "SELECT 1 FROM schema_migrations WHERE version = ?", file.Version).Scan(&exists)
+		var appliedChecksum string
+		err := connection.QueryRowContext(ctx,
+			"SELECT checksum FROM schema_migrations WHERE version = ?", file.Version,
+		).Scan(&appliedChecksum)
 		if err == nil {
+			if appliedChecksum != file.Checksum {
+				return fmt.Errorf("migration %d checksum mismatch", file.Version)
+			}
+			if file.Version == 1 {
+				if err := verifyInitialSchema(ctx, connection); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		if err != sql.ErrNoRows {
@@ -123,11 +152,50 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 				return fmt.Errorf("apply migration %03d_%s: %w", file.Version, file.Name, err)
 			}
 		}
+		if file.Version == 1 {
+			if err := verifyInitialSchema(ctx, connection); err != nil {
+				return err
+			}
+		}
 		if _, err := connection.ExecContext(ctx,
-			"INSERT INTO schema_migrations (version, name) VALUES (?, ?)", file.Version, file.Name,
+			"INSERT INTO schema_migrations (version, name, checksum) VALUES (?, ?, ?)",
+			file.Version, file.Name, file.Checksum,
 		); err != nil {
 			return fmt.Errorf("record migration %d: %w", file.Version, err)
 		}
+	}
+	return nil
+}
+
+func verifyInitialSchema(ctx context.Context, connection *sql.Conn) error {
+	markers := []string{
+		"chk_users_schema_v1",
+		"chk_circles_schema_v1",
+		"chk_circle_memberships_schema_v1",
+		"chk_securities_schema_v1",
+		"chk_posts_schema_v1",
+		"chk_post_securities_schema_v1",
+		"chk_comments_schema_v1",
+		"chk_reports_schema_v1",
+		"chk_notifications_schema_v1",
+		"chk_admin_audit_schema_v1",
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(markers)), ",")
+	arguments := make([]any, len(markers))
+	for index, marker := range markers {
+		arguments[index] = marker
+	}
+	query := `SELECT COUNT(*)
+FROM information_schema.table_constraints
+WHERE constraint_schema = DATABASE()
+  AND constraint_type = 'CHECK'
+  AND constraint_name IN (` + placeholders + `)`
+	var found int
+	if err := connection.QueryRowContext(ctx, query, arguments...).Scan(&found); err != nil {
+		return fmt.Errorf("verify initial schema markers: %w", err)
+	}
+	if found != len(markers) {
+		return fmt.Errorf("verify initial schema markers: found %d of %d; reset or repair incompatible pre-existing tables", found, len(markers))
 	}
 	return nil
 }
