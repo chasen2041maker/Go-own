@@ -1,51 +1,45 @@
 package main
 
-import (
-	"fmt"
-	"math"
-)
-
-type Shape interface {
-	Area() float64
-	Perimeter() float64
-}
-
-type Circle struct {
-	Radius float64
-}
-
-func (c Circle) Area() float64 {
-	return math.Pi * c.Radius * c.Radius
-}
-
-func (c Circle) Perimeter() float64 {
-	return 2 * math.Pi * c.Radius
-}
-
-type Rectangle struct {
-	Width, Height float64
-}
-
-func (r Rectangle) Area() float64 {
-	return r.Width * r.Height
-}
-
-func (r Rectangle) Perimeter() float64 {
-	return 2 * (r.Width + r.Height)
-}
-
-func PrintShape(s Shape) {
-	fmt.Printf("面积：%.2f,周长：%.2f\n", s.Area(), s.Perimeter())
-}
+import "fmt"
 
 func main() {
 	c := Circle{Radius: 5}
 	r := Rectangle{Width: 4, Height: 6}
 
 	fmt.Println("圆形")
-	PrintShape(c)
+	printShapeInfo(c)
 
 	fmt.Println("矩形")
-	PrintShape(r)
+	printShapeInfo(r)
 
+	fmt.Println("=== 任务 1：定义和实现接口 ===")
+	// 创建不同的形状
+	circle := Circle{Radius: 5}
+	rect := Rectangle{Width: 4, Height: 6}
+
+	// 接口变量可以存储任何实现了该接口的类型
+	var shape Shape
+
+	shape = circle
+	fmt.Printf("圆形: 面积=%.2f, 周长=%.2f\n", shape.Area(), shape.Perimeter())
+
+	shape = rect
+	fmt.Printf("矩形: 面积=%.2f, 周长=%.2f\n", shape.Area(), shape.Perimeter())
+
+	fmt.Println("\n=== 任务 2：接口作为参数 ===")
+	printShapeInfo(circle)
+	printShapeInfo(rect)
+
+	fmt.Println("\n=== 任务 3：类型断言 ===")
+	describe(circle)
+	describe(rect)
+	describe(42)
+	describe("hello")
+
+	fmt.Println("\n=== 任务 4：空接口 ===")
+	printAnything("Go语言")
+	printAnything(123)
+	printAnything(3.14)
+	printAnything(true)
+	printAnything([]int{1, 2, 3})
 }

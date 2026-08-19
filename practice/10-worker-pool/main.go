@@ -3,17 +3,7 @@ package main
 import (
 	"fmt"
 	"sync"
-	"time"
 )
-
-func worker(id int, jobs <-chan int, results chan<- int, wg *sync.WaitGroup) {
-	defer wg.Done()
-	for job := range jobs {
-		fmt.Printf("[Worker %d] 处理任务%d\n", id, job)
-		time.Sleep(200 * time.Millisecond)
-		results <- job * job
-	}
-}
 
 func main() {
 	const numJobs = 10
@@ -46,4 +36,15 @@ func main() {
 	}
 	fmt.Println("\n所有任务处理完成")
 
+	fmt.Println("=== 任务 1：基础 Goroutine ===")
+	task1_basicGoroutine()
+
+	fmt.Println("\n=== 任务 2：Channel 通信 ===")
+	task2_channelCommunication()
+
+	fmt.Println("\n=== 任务 3：缓冲 Channel ===")
+	task3_bufferedChannel()
+
+	fmt.Println("\n=== 任务 4：Worker Pool ===")
+	task4_workerPool()
 }
