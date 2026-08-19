@@ -33,6 +33,19 @@ func TestCursorCodecRoundTripsStablePositions(t *testing.T) {
 	if err != nil || !circlePosition.CreatedAt.Equal(createdAt) || circlePosition.ID != 9 {
 		t.Fatalf("DecodeCircle() = %#v, %v", circlePosition, err)
 	}
+
+	postBinding := postCursorBinding{CircleID: 7, SecurityID: 3, Limit: 20}
+	postToken, err := codec.EncodePost(postBinding, domain.PostCursor{CreatedAt: createdAt, ID: 11})
+	if err != nil {
+		t.Fatalf("EncodePost() error = %v", err)
+	}
+	postPosition, err := codec.DecodePost(postToken, postBinding)
+	if err != nil || !postPosition.CreatedAt.Equal(createdAt) || postPosition.ID != 11 {
+		t.Fatalf("DecodePost() = %#v, %v", postPosition, err)
+	}
+	if _, err := codec.DecodePost(postToken, postCursorBinding{CircleID: 8, SecurityID: 3, Limit: 20}); !errors.Is(err, errInvalidCursor) {
+		t.Fatalf("DecodePost(changed filter) error = %v", err)
+	}
 }
 
 func TestCursorCodecRejectsTamperingChangedFiltersWrongKindAndExpiry(t *testing.T) {

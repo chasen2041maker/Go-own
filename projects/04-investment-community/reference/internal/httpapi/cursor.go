@@ -32,16 +32,24 @@ type circleCursorBinding struct {
 	Limit int
 }
 
+type postCursorBinding struct {
+	CircleID   int64
+	SecurityID int64
+	Limit      int
+}
+
 type cursorPayload struct {
-	Version   int    `json:"v"`
-	Kind      string `json:"k"`
-	Query     string `json:"q,omitempty"`
-	Exchange  string `json:"e,omitempty"`
-	Limit     int    `json:"l"`
-	Code      string `json:"c,omitempty"`
-	CreatedAt int64  `json:"t,omitempty"`
-	ID        int64  `json:"i"`
-	ExpiresAt int64  `json:"x"`
+	Version    int    `json:"v"`
+	Kind       string `json:"k"`
+	Query      string `json:"q,omitempty"`
+	Exchange   string `json:"e,omitempty"`
+	Limit      int    `json:"l"`
+	Code       string `json:"c,omitempty"`
+	CreatedAt  int64  `json:"t,omitempty"`
+	CircleID   int64  `json:"o,omitempty"`
+	SecurityID int64  `json:"s,omitempty"`
+	ID         int64  `json:"i"`
+	ExpiresAt  int64  `json:"x"`
 }
 
 // CursorCodec 只在 HTTP 边界把稳定位置变成不透明令牌；仓储无需知道签名和筛选绑定。
@@ -98,6 +106,23 @@ func (codec *CursorCodec) DecodeCircle(token string, binding circleCursorBinding
 		return domain.CircleCursor{}, errInvalidCursor
 	}
 	return domain.CircleCursor{CreatedAt: time.UnixMicro(payload.CreatedAt).UTC(), ID: payload.ID}, nil
+}
+
+func (codec *CursorCodec) EncodePost(binding postCursorBinding, position domain.PostCursor) (string, error) {
+	if position.ID <= 0 || position.CreatedAt.IsZero() || binding.CircleID < 0 || binding.SecurityID < 0 || binding.Limit < 1 {
+		return "", errInvalidCursor
+	}
+	return codec.encode(cursorPayload{Version: cursorVersion, Kind: "posts", CircleID: binding.CircleID,
+		SecurityID: binding.SecurityID, Limit: binding.Limit, CreatedAt: position.CreatedAt.UTC().UnixMicro(), ID: position.ID})
+}
+
+func (codec *CursorCodec) DecodePost(token string, binding postCursorBinding) (domain.PostCursor, error) {
+	payload, err := codec.decode(token)
+	if err != nil || payload.Kind != "posts" || payload.CircleID != binding.CircleID || payload.SecurityID != binding.SecurityID ||
+		payload.Limit != binding.Limit || payload.CreatedAt <= 0 || payload.ID <= 0 {
+		return domain.PostCursor{}, errInvalidCursor
+	}
+	return domain.PostCursor{CreatedAt: time.UnixMicro(payload.CreatedAt).UTC(), ID: payload.ID}, nil
 }
 
 func (codec *CursorCodec) encode(payload cursorPayload) (string, error) {
