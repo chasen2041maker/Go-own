@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS admin_audit_logs;
+DROP TABLE IF EXISTS notifications;
+DROP TABLE IF EXISTS reports;
+DROP TABLE IF EXISTS comments;
+DROP TABLE IF EXISTS post_securities;
+DROP TABLE IF EXISTS posts;
+DROP TABLE IF EXISTS securities;
+DROP TABLE IF EXISTS circle_memberships;
+DROP TABLE IF EXISTS circles;
+DROP TABLE IF EXISTS users;
