@@ -63,6 +63,8 @@ python $wikiScript check --root .
 
 上述命令均通过；integration 使用独立 `investment_community_test` 且无 SKIP。acceptance 使用演示库与独立 API 端口，显式调用全部 21 个 operationId，并覆盖注册、入圈、发帖/更新、评论/回复通知、举报、隐藏、审计、恢复及删除。Docker 镜像实际构建未作为成功证据：当前沙箱拒绝 Docker 命名管道/Buildx 锁访问；Compose 展开已通过，工作流会在 Linux 冷构建后检查 Swagger 镜像非 root、API/Swagger/OpenAPI 和完整 HTTP 旅程。
 
+提交后总审计又补齐三项真实 MySQL 证据：通知插入故障时回复整笔回滚、8 个同 key 评论并发只产生一行/一条通知、8 个重复举报并发只产生一个 receipt。并发评论测试曾稳定复现 1213，根因已通过统一“帖子目标 → 幂等键 → 可选父评论”锁序修复；三项聚焦测试连续 5 次通过，全量 integration 随后再次无 SKIP 通过。
+
 本分支最终提交后创建 `stock-v1/s08-done` 与 `stock-v1/learner-start` 两个不可变 Tag。剩余外部证据只有 Docker 冷启动与 GitHub CI；必须在可访问 Docker daemon 的环境复验，不能用静态配置成功替代。
 
 ## 4. 下一步严格顺序

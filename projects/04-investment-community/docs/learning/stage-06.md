@@ -65,6 +65,7 @@ Handler 负责拒绝未知目标类型；用例负责可举报性；数据库负
 11. `TestCreateReportRejectsOwnContent`：举报自己的帖子/评论返回 `422 self_report_forbidden`。最初失败，因为只校验目标存在；
 12. `TestDuplicateReportChecksUniqueRelationBeforeVisibility`：目标后来隐藏后重试仍返回原举报 200。最初失败，因为先检查目标可见性；
 13. `TestAuthorDeleteClosesPendingReportsInSameTransaction`：帖子/评论删除与 `author_deleted` 举报收口要么同时成功，要么同时回滚。最初失败，因为旧删除用例不知道 reports；
+14. 集成测试 `TestConcurrentDuplicateReport`：同一用户并发重复举报只产生一条记录并返回同一 receipt。最初失败，因为顺序重放不能证明唯一关系在竞争下仍是最终裁判。
 
 ## 6. GREEN 最大边界
 
@@ -90,7 +91,7 @@ go vet ./projects/04-investment-community/starter/...
 真实 MySQL 环境：
 
 ```powershell
-$integrationPattern = 'Test(Report(Target|Creation|ForeignKey)|AuthorDeleteClosesPendingReports)'
+$integrationPattern = 'Test(Report(Target|Creation|ForeignKey)|ConcurrentDuplicateReport|AuthorDeleteClosesPendingReports)'
 $integrationList = go test -tags=integration ./projects/04-investment-community/starter/... -list $integrationPattern
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if (-not ($integrationList | Select-String '^Test')) { throw '阶段 06 没有匹配的集成测试' }
@@ -103,7 +104,7 @@ go test -tags=integration ./projects/04-investment-community/starter/... -run $i
 - 在目标校验与举报插入之间模拟隐藏，比较事务内锁定、条件写入两种方案；
 - 给举报原因输入超长文本和 HTML，验证长度边界与输出转义责任；
 - 用普通用户请求管理列表，确认在查询前失败；
-- 同一用户连续举报同一内容，验证第二次返回 200、原举报 ID，数据库仍只有一行。
+- 同一用户并发举报同一内容，验证所有请求返回原举报 ID，数据库仍只有一行。
 
 ## 9. 理解 / 面试问题
 

@@ -19,8 +19,21 @@ func (store *Store) CreateComment(ctx context.Context, input domain.CreateCommen
 	}
 	defer tx.Rollback()
 
-	// 先锁定用户+幂等键。不存在时唯一索引上的 gap lock 会让同键并发请求串行，
-	// 第二个请求等待后即可读取第一个请求提交的评论，避免重复通知。
+	// 先锁帖子，再锁用户+幂等键；所有评论创建使用同一顺序，避免多个 gap lock
+	// 与帖子行锁形成死锁。帖子状态先作为快照读取，既有重放仍可在目标后来隐藏时返回原结果。
+	var postAuthorID, circleID int64
+	var postVisibility string
+	var postDeletedAt sql.NullTime
+	err = tx.QueryRowContext(ctx, `
+SELECT author_id,circle_id,visibility,deleted_at FROM posts
+WHERE id=? FOR UPDATE`, input.PostID).Scan(&postAuthorID, &circleID, &postVisibility, &postDeletedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Comment{}, domain.ErrPostNotFound
+	}
+	if err != nil {
+		return domain.Comment{}, fmt.Errorf("lock comment post: %w", err)
+	}
+
 	commentID, storedHash, found, err := findIdempotentComment(ctx, tx, input.AuthorID, input.IdempotencyKey, true)
 	if err != nil {
 		return domain.Comment{}, err
@@ -38,17 +51,8 @@ func (store *Store) CreateComment(ctx context.Context, input domain.CreateCommen
 		}
 		return comment, nil
 	}
-
-	var postAuthorID, circleID int64
-	err = tx.QueryRowContext(ctx, `
-SELECT author_id,circle_id FROM posts
-WHERE id=? AND visibility='visible' AND deleted_at IS NULL FOR UPDATE`, input.PostID).
-		Scan(&postAuthorID, &circleID)
-	if errors.Is(err, sql.ErrNoRows) {
+	if postVisibility != "visible" || postDeletedAt.Valid {
 		return domain.Comment{}, domain.ErrPostNotFound
-	}
-	if err != nil {
-		return domain.Comment{}, fmt.Errorf("lock comment post: %w", err)
 	}
 	var membership int
 	if err := tx.QueryRowContext(ctx,

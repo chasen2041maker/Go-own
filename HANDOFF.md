@@ -39,7 +39,7 @@ plan_drift_triggered: false
 
 ## Current Chunk Context
 
-chunk-01～08 的代码、规格/质量/文档复审及本地可执行门禁已完成。真实 MySQL integration 使用独立 schema 且无 SKIP；纯 HTTP acceptance 调用全部 21 个操作。当前沙箱无 Docker daemon 权限，只剩冷构建/Swagger 与 GitHub CI 外部证据。
+chunk-01～08 的代码、规格/质量/文档复审及本地可执行门禁已完成。提交后审计补齐通知故障回滚、并发评论幂等和并发重复举报测试，并修正评论目标优先锁序；真实 MySQL 全量 integration 使用独立 schema 且无 SKIP，纯 HTTP acceptance 调用全部 21 个操作。当前沙箱无 Docker daemon 权限，只剩冷构建/Swagger 与 GitHub CI 外部证据。
 
 ## Escalations
 

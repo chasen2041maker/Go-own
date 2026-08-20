@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -101,6 +102,130 @@ AND handled_by IS NULL AND handled_at IS NOT NULL`, top.ID).Scan(&closed); err !
 			t.Fatalf("deleted parent or its reply remained visible: %#v", comment)
 		}
 	}
+}
+
+func TestReplyNotificationRollback(t *testing.T) {
+	database, store := openCommunityIntegrationStore(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	fixture := newPostFixture(t, ctx, database)
+	post := fixture.create(t, ctx, mustIntegrationPostService(t, store), "reply-rollback", "回复回滚", []int64{fixture.securityA})
+	commenterID := insertIntegrationUser(t, ctx, database, "reply-rollback-"+fixture.suffix)
+	if _, err := database.ExecContext(ctx, "INSERT INTO circle_memberships (circle_id,user_id) VALUES (?,?)", fixture.circleID, commenterID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = database.Exec("DROP TRIGGER IF EXISTS trg_test_fail_notification_insert")
+		_, _ = database.Exec("DELETE FROM notifications WHERE post_id=?", post.ID)
+		_, _ = database.Exec("DELETE FROM comments WHERE post_id=?", post.ID)
+		_, _ = database.Exec("DELETE FROM circle_memberships WHERE user_id=?", commenterID)
+		deleteIntegrationIDs(database, "users", []int64{commenterID})
+	})
+	service, err := usecase.NewInteractionService(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	top, err := service.CreateComment(ctx, usecase.CreateCommentInput{UserID: commenterID, PostID: post.ID,
+		Body: "等待回复", IdempotencyKey: "rollback-top-" + fixture.suffix})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(ctx, "DROP TRIGGER IF EXISTS trg_test_fail_notification_insert"); err != nil {
+		t.Fatalf("drop stale failure trigger: %v", err)
+	}
+	if _, err := database.ExecContext(ctx, `CREATE TRIGGER trg_test_fail_notification_insert
+BEFORE INSERT ON notifications FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='test notification failure'`); err != nil {
+		t.Fatalf("create failure trigger: %v", err)
+	}
+
+	replyKey := "rollback-reply-" + fixture.suffix
+	_, err = service.CreateComment(ctx, usecase.CreateCommentInput{UserID: fixture.userID, PostID: post.ID,
+		ParentCommentID: &top.ID, Body: "这条回复必须回滚", IdempotencyKey: replyKey})
+	if err == nil {
+		t.Fatal("CreateComment(reply) error = nil, want notification failure")
+	}
+	var comments, notifications int
+	if err := database.QueryRowContext(ctx, "SELECT COUNT(*) FROM comments WHERE author_id=? AND idempotency_key=?", fixture.userID, replyKey).Scan(&comments); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRowContext(ctx, "SELECT COUNT(*) FROM notifications WHERE post_id=? AND type='reply'", post.ID).Scan(&notifications); err != nil {
+		t.Fatal(err)
+	}
+	if comments != 0 || notifications != 0 {
+		t.Fatalf("rolled-back reply/comments = %d, notifications = %d, want 0/0", comments, notifications)
+	}
+}
+
+func TestConcurrentCommentIdempotency(t *testing.T) {
+	database, store := openCommunityIntegrationStore(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	fixture := newPostFixture(t, ctx, database)
+	post := fixture.create(t, ctx, mustIntegrationPostService(t, store), "comment-race", "评论幂等", []int64{fixture.securityA})
+	commenterID := insertIntegrationUser(t, ctx, database, "comment-race-"+fixture.suffix)
+	if _, err := database.ExecContext(ctx, "INSERT INTO circle_memberships (circle_id,user_id) VALUES (?,?)", fixture.circleID, commenterID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = database.Exec("DELETE FROM notifications WHERE post_id=?", post.ID)
+		_, _ = database.Exec("DELETE FROM comments WHERE post_id=?", post.ID)
+		_, _ = database.Exec("DELETE FROM circle_memberships WHERE user_id=?", commenterID)
+		deleteIntegrationIDs(database, "users", []int64{commenterID})
+	})
+	service, err := usecase.NewInteractionService(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := usecase.CreateCommentInput{UserID: commenterID, PostID: post.ID, Body: "并发同一评论", IdempotencyKey: "comment-race-" + fixture.suffix}
+	const workers = 8
+	start := make(chan struct{})
+	ids := make(chan int64, workers)
+	errorsOut := make(chan error, workers)
+	var group sync.WaitGroup
+	for range workers {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			comment, err := service.CreateComment(ctx, input)
+			if err != nil {
+				errorsOut <- err
+				return
+			}
+			ids <- comment.ID
+		}()
+	}
+	close(start)
+	group.Wait()
+	close(ids)
+	close(errorsOut)
+	for err := range errorsOut {
+		t.Fatalf("CreateComment() error = %v", err)
+	}
+	var winner int64
+	for id := range ids {
+		if winner == 0 {
+			winner = id
+		} else if id != winner {
+			t.Fatalf("comment IDs = %d/%d, want one winner", winner, id)
+		}
+	}
+	var comments int
+	if err := database.QueryRowContext(ctx, "SELECT COUNT(*) FROM comments WHERE author_id=? AND idempotency_key=?", commenterID, input.IdempotencyKey).Scan(&comments); err != nil {
+		t.Fatal(err)
+	}
+	if comments != 1 {
+		t.Fatalf("comment rows = %d, want 1", comments)
+	}
+	assertNotificationCount(t, ctx, database, fixture.userID, "comment", 1)
+	if _, err := database.ExecContext(ctx, "UPDATE posts SET visibility='hidden',moderation_version=moderation_version+1 WHERE id=?", post.ID); err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := service.CreateComment(ctx, input)
+	if err != nil || replayed.ID != winner {
+		t.Fatalf("replay after post hidden = %#v, error = %v, want id %d", replayed, err, winner)
+	}
+	assertNotificationCount(t, ctx, database, fixture.userID, "comment", 1)
 }
 
 func assertNotificationCount(t *testing.T, ctx context.Context, database *sql.DB, userID int64, kind string, want int) {

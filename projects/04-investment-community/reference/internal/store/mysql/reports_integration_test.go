@@ -5,6 +5,7 @@ package mysql
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -66,6 +67,65 @@ func TestReportDuplicateBeforeVisibilitySelfRuleAndAdminQueue(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("created report missing from admin queue")
+	}
+}
+
+func TestConcurrentDuplicateReport(t *testing.T) {
+	database, store := openCommunityIntegrationStore(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	fixture := newPostFixture(t, ctx, database)
+	post := fixture.create(t, ctx, mustIntegrationPostService(t, store), "report-race", "举报幂等", []int64{fixture.securityA})
+	reporterID := insertIntegrationUser(t, ctx, database, "report-race-"+fixture.suffix)
+	t.Cleanup(func() {
+		_, _ = database.Exec("DELETE FROM reports WHERE post_id=?", post.ID)
+		deleteIntegrationIDs(database, "users", []int64{reporterID})
+	})
+	service, err := usecase.NewReportService(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := usecase.CreateReportInput{ReporterID: reporterID, TargetType: domain.ContentTypePost,
+		TargetID: post.ID, Reason: domain.ReportReasonMisleading, Details: "并发重复举报"}
+	const workers = 8
+	start := make(chan struct{})
+	ids := make(chan int64, workers)
+	errorsOut := make(chan error, workers)
+	var group sync.WaitGroup
+	for range workers {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			result, err := service.CreateReport(ctx, input)
+			if err != nil {
+				errorsOut <- err
+				return
+			}
+			ids <- result.Report.ID
+		}()
+	}
+	close(start)
+	group.Wait()
+	close(ids)
+	close(errorsOut)
+	for err := range errorsOut {
+		t.Fatalf("CreateReport() error = %v", err)
+	}
+	var winner int64
+	for id := range ids {
+		if winner == 0 {
+			winner = id
+		} else if id != winner {
+			t.Fatalf("report IDs = %d/%d, want one receipt", winner, id)
+		}
+	}
+	var reports int
+	if err := database.QueryRowContext(ctx, "SELECT COUNT(*) FROM reports WHERE reporter_id=? AND post_id=?", reporterID, post.ID).Scan(&reports); err != nil {
+		t.Fatal(err)
+	}
+	if reports != 1 {
+		t.Fatalf("report rows = %d, want 1", reports)
 	}
 }
 
