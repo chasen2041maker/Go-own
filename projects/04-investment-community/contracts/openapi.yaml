@@ -1,0 +1,1773 @@
+openapi: 3.1.0
+info:
+  title: 星港投资社区 API
+  summary: 原创投资内容社区与治理系统的 V1 HTTP 契约
+  description: |-
+    本契约是 reference 与 starter 唯一共享的接口事实源。V1 只提供社区内容、
+    站内通知与治理闭环，不提供真实行情、交易或投资建议。实现层的统一持久化词汇为
+    `securities`、`post_securities`、`reports`，不得维护含义相同的第二套命名。
+
+    除注册和登录外，所有操作都要求 JWT。服务端只把已验证 JWT 的 `sub` 当作身份线索，
+    每次请求都按 `sub` 加载当前数据库用户；角色、停用状态和授权结论不得信任 JWT claim。
+    客户端身份字段一律无效，所有错误都使用统一错误信封。
+
+    只有创建帖子和创建评论要求 `Idempotency-Key`，幂等域分别限定在对应操作内。
+    同一操作、用户、key 与正文重放首次结果；同域 key 搭配不同正文返回
+    `409 idempotency_conflict`。请求体的原始字节上限统一为 1 MiB（1,048,576 bytes）。
+  version: 1.0.0
+  x-request-body-limit-bytes: 1048576
+  license:
+    name: Educational Use
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+servers:
+  - url: /api/v1
+    description: V1 相对路径
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+    description: 注册与登录
+  - name: Securities
+    description: 仅含虚构数据的静态证券目录
+  - name: Circles
+    description: 公开圈子与成员关系
+  - name: Posts
+    description: 带证券标签的圈子帖子
+  - name: Comments
+    description: 顶级评论与最多一层回复
+  - name: Reports
+    description: 用户举报入口
+  - name: Notifications
+    description: 当前用户自己的站内通知
+  - name: Admin
+    description: 管理员治理与不可变审计
+
+paths:
+  /auth/register:
+    post:
+      operationId: registerUser
+      tags: [Auth]
+      summary: 注册用户
+      description: 创建普通用户并签发首个访问令牌；邮箱冲突返回稳定的 409 错误。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: 用户创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /auth/login:
+    post:
+      operationId: loginUser
+      tags: [Auth]
+      summary: 登录
+      description: 验证邮箱和密码；不存在的邮箱与错误密码统一返回 `invalid_credentials`。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /me:
+    get:
+      operationId: getCurrentUser
+      tags: [Auth]
+      summary: 查询当前用户
+      description: |-
+        按已验证 JWT 的 `sub` 加载当前数据库用户并返回最新角色；JWT 中即使携带 role，
+        也不得作为授权依据。用户不存在或已停用时返回 `401 unauthenticated`。
+      responses:
+        '200':
+          description: 当前数据库用户
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivateCurrentUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /securities:
+    get:
+      operationId: listSecurities
+      tags: [Securities]
+      summary: 查询证券目录
+      description: |-
+        只返回启用的虚构证券，按 `(code, id)` 升序做游标分页。
+        `q` 同时匹配代码和名称，不代表真实市场搜索。
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: q
+          in: query
+          description: 可选的代码或名称前缀，最多 50 个字符
+          schema:
+            type: string
+            maxLength: 50
+        - name: exchange
+          in: query
+          description: 虚构交易所代码
+          schema:
+            type: string
+            maxLength: 16
+      responses:
+        '200':
+          description: 证券页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /circles:
+    get:
+      operationId: listCircles
+      tags: [Circles]
+      summary: 查询公开圈子
+      description: 按 `(created_at, id)` 倒序分页，并标明当前 JWT 用户是否已经加入。
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 圈子页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CircleListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /circles/{circleId}/membership:
+    put:
+      operationId: setCircleMembership
+      tags: [Circles]
+      summary: 设置本人圈子成员状态
+      description: |-
+        V1 的圈子均为公开加入。`joined=true` 加入，重复加入保留原始 `joined_at`；
+        `joined=false` 退出，重复退出仍返回 `joined=false, joined_at=null`。唯一成员关系让该 PUT
+        天然幂等，不需要 `Idempotency-Key`。
+      parameters:
+        - $ref: '#/components/parameters/CircleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetCircleMembershipRequest'
+      responses:
+        '200':
+          description: 当前成员状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CircleMembership'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /posts:
+    get:
+      operationId: listPosts
+      tags: [Posts]
+      summary: 查询帖子
+      description: |-
+        按 `(created_at, id)` 倒序分页。普通业务查询始终排除用户已删除或管理员已隐藏的内容。
+        游标与创建它时的全部筛选条件绑定，换筛选条件复用游标会返回 `invalid_cursor`。
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: circle_id
+          in: query
+          description: 只查询指定圈子
+          schema:
+            $ref: '#/components/schemas/BusinessId'
+        - name: security_id
+          in: query
+          description: 只查询带指定证券标签的帖子
+          schema:
+            $ref: '#/components/schemas/BusinessId'
+      responses:
+        '200':
+          description: 帖子页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    post:
+      operationId: createPost
+      tags: [Posts]
+      summary: 发布帖子
+      description: |-
+        当前用户必须是目标圈子成员。帖子和 1～5 个不重复、已启用的证券标签同事务保存。
+        请求体不能提交作者身份。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePostRequest'
+      responses:
+        '201':
+          description: 帖子创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /posts/{postId}:
+    get:
+      operationId: getPost
+      tags: [Posts]
+      summary: 查询帖子详情
+      description: 对普通用户隐藏已删除或已治理隐藏的帖子，统一返回 `404 not_found`。
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        '200':
+          description: 可见帖子详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    patch:
+      operationId: updatePost
+      tags: [Posts]
+      summary: 修改自己的帖子
+      description: |-
+        只有作者可以修改；管理员不能借此改写他人内容。作者仍须是圈子成员，
+        且帖子必须可见、未删除。请求必须携带当前 `version`；匹配时帖子、证券标签和
+        `version + 1` 同事务提交，不匹配返回 `409 version_conflict`。
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePostRequest'
+      responses:
+        '200':
+          description: 修改后的帖子
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    delete:
+      operationId: deletePost
+      tags: [Posts]
+      summary: 删除自己的帖子
+      description: |-
+        只有作者可以软删除。管理员治理不复用本接口；已隐藏内容不能由作者绕过治理删除，
+        返回 `409 content_not_editable`。软删除帖子时，必须在同一事务中把该帖子全部 pending
+        举报更新为 `status=resolved`、`decided_action=author_deleted`、`decided_by=null`，
+        `decided_at` 使用本次系统时间。此路径不写管理员审计日志；可另记作者删除运行日志。
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        '204':
+          description: 已软删除，无响应体
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /posts/{postId}/comments:
+    get:
+      operationId: listComments
+      tags: [Comments]
+      summary: 查询帖子评论
+      description: |-
+        按 `(created_at, id)` 升序分页，返回顶级评论和一级回复的平铺结果。
+        隐藏、删除的评论以及父评论不可见的回复均不返回。
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 评论页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+    post:
+      operationId: createComment
+      tags: [Comments]
+      summary: 发表评论或一级回复
+      description: |-
+        当前用户必须是帖子所在圈子的成员。`parent_comment_id` 省略时创建顶级评论；
+        提供时，父评论必须属于同一帖子、可见、未删除且本身没有父评论。
+        回复他人时，评论与通知同事务创建；回复自己不创建通知。
+
+        幂等请求指纹必须包含：固定 operation `createComment`、当前数据库用户 ID、
+        含实际 `postId` 的路径，以及规范正文。规范正文固定为无空白、字段顺序固定的
+        `{"body":<JSON字符串>,"parent_comment_id":<正整数或null>}`；上述四段以换行连接后
+        做 SHA-256。因而同 key 不能跨帖子误重放。
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentRequest'
+      responses:
+        '201':
+          description: 评论创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /comments/{commentId}:
+    delete:
+      operationId: deleteComment
+      tags: [Comments]
+      summary: 删除自己的评论
+      description: |-
+        只有作者可以软删除。删除顶级评论后，其一级回复也从普通评论列表中隐藏，
+        但数据库记录保留用于一致性。治理隐藏中的评论返回 `content_not_editable`。
+        软删除评论时，必须在同一事务中把该评论全部 pending 举报更新为
+        `status=resolved`、`decided_action=author_deleted`、`decided_by=null`，`decided_at`
+        使用本次系统时间。此路径不写管理员审计日志；可另记作者删除运行日志。
+      parameters:
+        - $ref: '#/components/parameters/CommentId'
+      responses:
+        '204':
+          description: 已软删除，无响应体
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /reports:
+    post:
+      operationId: createReport
+      tags: [Reports]
+      summary: 举报帖子或评论
+      description: |-
+        `(reporter_id, target_type, target_id)` 唯一。身份与请求字段校验通过后，服务端必须
+        先按该唯一关系查重：已存在就返回原举报与 200，即使目标后来已 hidden；不存在时
+        才检查目标当前可见且未删除并创建 201。用户不能举报自己的内容，返回
+        `422 self_report_forbidden`。任何分支都不产生第二行。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReportRequest'
+      responses:
+        '200':
+          description: 已存在同一用户对同一目标的举报，返回原资源
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportReceipt'
+        '201':
+          description: 举报已进入待处理队列
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportReceipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [Notifications]
+      summary: 查询自己的通知
+      description: |-
+        接收者身份只来自 JWT，接口没有 `user_id` 筛选项。按 `(created_at, id)` 倒序分页。
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: unread_only
+          in: query
+          description: 为 true 时只返回未读通知
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: 当前用户通知页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /notifications/read:
+    put:
+      operationId: markAllNotificationsRead
+      tags: [Notifications]
+      summary: 将自己的全部通知标为已读
+      description: |-
+        只更新 JWT 当前用户的未读通知。重复调用成功且 `read_count` 为 0，
+        因此不需要 `Idempotency-Key`。
+      responses:
+        '200':
+          description: 本次标记结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarkNotificationsReadResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /admin/reports:
+    get:
+      operationId: listAdminReports
+      tags: [Admin]
+      summary: 查询举报工作队列
+      description: 管理员专用，按 `(created_at, id)` 倒序分页，可查看治理所需的目标快照。
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ReportStatus'
+        - name: target_type
+          in: query
+          schema:
+            $ref: '#/components/schemas/ContentType'
+      responses:
+        '200':
+          description: 举报页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminReportListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /admin/reports/{reportId}/decision:
+    post:
+      operationId: decideAdminReport
+      tags: [Admin]
+      summary: 处理待处理举报
+      description: |-
+        管理员可忽略举报或隐藏目标。服务端锁定 pending 举报，并在同一事务中更新举报、
+        可见性与审计日志。已完成的相同决策安全返回当前资源；不同决策返回
+        `409 report_already_decided`，且不得重复审计。
+
+        管理员请求的 `decision` 只能是 `ignore` 或 `hide`；`author_deleted` 是系统在作者
+        删除内容时写入的结果值，管理员提交它固定返回 `400 invalid_request`，不改变状态。
+
+        `decision=hide` 时不只处理路径中的举报：必须锁定同一 `target_type + target_id` 的
+        全部 pending 举报，并在同一事务中全部更新为 `status=resolved`、
+        `decided_action=hide`，共享本次 `decided_by/decided_at`；内容只隐藏一次且只写一条审计。
+        隐藏成功还必须把目标 `moderation_version + 1`，响应 target 返回递增后的当前值。
+      parameters:
+        - $ref: '#/components/parameters/ReportId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminReportDecisionRequest'
+      responses:
+        '200':
+          description: 已完成的举报决策
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminReport'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /admin/content/{targetType}/{targetId}/restore:
+    post:
+      operationId: restoreAdminContent
+      tags: [Admin]
+      summary: 恢复治理隐藏的内容
+      description: |-
+        请求携带 `expected_moderation_version`。hidden 且当前版本匹配时恢复为 visible、
+        `moderation_version + 1`，并与审计同事务提交。visible 且当前版本恰为 expected+1，
+        并能由既有恢复记录确认该次转换时，识别为直接重试并返回原 200，不重复审计。
+        当前版本更高，或状态重新变为 hidden 但版本不匹配时返回
+        `409 moderation_version_conflict`，避免 hidden→visible→hidden 的 ABA 误判。
+        从未治理隐藏或作者已删除返回 `409 content_not_restorable`。`targetType` 不是
+        `post` 或 `comment` 时固定返回 `400 invalid_request`，不得降级为 404。
+      parameters:
+        - $ref: '#/components/parameters/TargetType'
+        - $ref: '#/components/parameters/TargetId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestoreContentRequest'
+      responses:
+        '200':
+          description: 恢复结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestoredContent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /admin/audit-logs:
+    get:
+      operationId: listAdminAuditLogs
+      tags: [Admin]
+      summary: 查询管理员审计日志
+      description: |-
+        管理员专用，只读且按 `(created_at, id)` 倒序分页。V1 没有修改或删除审计日志的接口。
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: action
+          in: query
+          schema:
+            $ref: '#/components/schemas/AuditAction'
+        - name: target_type
+          in: query
+          schema:
+            $ref: '#/components/schemas/ContentType'
+        - name: admin_id
+          in: query
+          schema:
+            $ref: '#/components/schemas/BusinessId'
+      responses:
+        '200':
+          description: 审计日志页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |-
+        使用 `Authorization: Bearer <JWT>`。实现只接受配置的签名算法、issuer 与 audience，
+        并校验 `exp`；`sub` 必须是正 int64 业务 ID 的十进制字符串，并只用于定位当前
+        数据库用户。角色与停用状态必须从数据库加载，不得信任或要求 token 中的 role claim。
+
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      description: |-
+        服务端签名或等价防篡改的不透明游标。游标绑定排序和全部筛选条件；
+        篡改、过期或换筛选条件复用返回 `400 invalid_cursor`。
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 2048
+    Limit:
+      name: limit
+      in: query
+      description: 每页数量
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |-
+        仅用于创建帖子和创建评论。1～128 个可见 ASCII 字符；相同 key 只有在该操作定义的
+        完整请求指纹（至少含 operation、当前用户、具体路径和规范正文）相等时才重放首次结果，
+        否则返回 `409 idempotency_conflict`。
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[!-~]+$'
+    CircleId:
+      name: circleId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/BusinessId'
+    PostId:
+      name: postId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/BusinessId'
+    CommentId:
+      name: commentId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/BusinessId'
+    ReportId:
+      name: reportId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/BusinessId'
+    TargetType:
+      name: targetType
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ContentType'
+    TargetId:
+      name: targetId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/BusinessId'
+
+  headers:
+    RequestId:
+      description: 本次请求的追踪 ID；与错误信封中的 `request_id` 相同
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+
+  responses:
+    BadRequest:
+      description: 请求 JSON、查询参数或游标无法解析
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: invalid_request
+              message: 请求格式不正确
+              request_id: req_01JEXAMPLE
+              details: []
+    Unauthorized:
+      description: JWT 缺失、无效或已过期；登录时也用于无效凭据
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: unauthenticated
+              message: 需要有效的访问令牌
+              request_id: req_01JEXAMPLE
+              details: []
+    InvalidCredentials:
+      description: 登录邮箱或密码无效；不得暴露邮箱是否存在
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: invalid_credentials
+              message: 邮箱或密码不正确
+              request_id: req_01JEXAMPLE
+              details: []
+    Forbidden:
+      description: 身份有效，但缺少角色、圈子成员或对象所有权权限
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: forbidden
+              message: 没有执行此操作的权限
+              request_id: req_01JEXAMPLE
+              details: []
+    NotFound:
+      description: 资源不存在，或为防止泄露而对当前用户隐藏
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: not_found
+              message: 资源不存在
+              request_id: req_01JEXAMPLE
+              details: []
+    Conflict:
+      description: |-
+        当前状态不允许操作。稳定 code 包括 `email_taken`、`idempotency_conflict`、
+        `version_conflict`、`moderation_version_conflict`、`content_not_editable`、`report_already_decided`、
+        `content_not_restorable`。
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: idempotency_conflict
+              message: 该幂等键已用于不同请求
+              request_id: req_01JEXAMPLE
+              details: []
+    PayloadTooLarge:
+      description: 请求体原始字节超过 1 MiB（1,048,576 bytes）
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: payload_too_large
+              message: 请求体过大
+              request_id: req_01JEXAMPLE
+              details: []
+    UnsupportedMediaType:
+      description: 带请求体的操作只接受 `application/json`
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: unsupported_media_type
+              message: Content-Type 必须是 application/json
+              request_id: req_01JEXAMPLE
+              details: []
+    ValidationFailed:
+      description: JSON 可解析，但字段或业务引用校验失败
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: validation_failed
+              message: 请求字段未通过校验
+              request_id: req_01JEXAMPLE
+              details:
+                - field: security_ids
+                  reason: 必须包含 1 到 5 个不重复的有效证券 ID
+    UnexpectedError:
+      description: 未预期的服务端错误，仍使用统一错误信封且不泄露内部细节
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: internal_error
+              message: 服务暂时无法处理请求
+              request_id: req_01JEXAMPLE
+              details: []
+
+  schemas:
+    # 教学提示：业务 ID 与时间先统一成值对象，避免不同 Handler 自己发明格式。
+    BusinessId:
+      type: integer
+      format: int64
+      minimum: 1
+      example: 101
+    Version:
+      type: integer
+      format: int64
+      minimum: 1
+      description: 单调递增的乐观锁版本
+      example: 1
+    Timestamp:
+      type: string
+      format: date-time
+      description: UTC 的 RFC 3339 时间
+      example: '2026-08-19T08:30:00Z'
+    Role:
+      type: string
+      enum: [user, admin]
+    UserStatus:
+      type: string
+      enum: [active, disabled]
+    Email:
+      type: string
+      format: email
+      maxLength: 254
+      x-max-bytes: 254
+      description: |-
+        输入先依次执行 Go `strings.TrimSpace` 与 `strings.ToLower`，再用
+        `net/mail.ParseAddress` 解析；仅当 Name 为空且 Address 与规范化字符串完全相等时接受。
+        因此只允许单个裸邮箱地址，拒绝显示名、尖括号形式和地址列表。响应始终返回规范化值。
+    Visibility:
+      type: string
+      enum: [visible, hidden]
+    ContentType:
+      type: string
+      enum: [post, comment]
+    ReportReason:
+      type: string
+      enum: [spam, harassment, misleading, illegal, other]
+    ReportStatus:
+      type: string
+      enum: [pending, ignored, resolved]
+    ReportDecision:
+      type: string
+      enum: [ignore, hide, author_deleted]
+    AdminDecision:
+      type: string
+      enum: [ignore, hide]
+      description: 管理员请求专用；author_deleted 仅属于系统生成的 ReportDecision 结果
+    AuditAction:
+      type: string
+      enum: [report_ignored, content_hidden, content_restored]
+
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, display_name, password]
+      properties:
+        email:
+          $ref: '#/components/schemas/Email'
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        password:
+          type: string
+          writeOnly: true
+          minLength: 12
+          maxLength: 72
+          x-max-bytes: 72
+          description: 至少 12 个 Unicode 字符，且 UTF-8 编码不得超过 bcrypt 的 72 字节上限
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          $ref: '#/components/schemas/Email'
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+          maxLength: 128
+    AuthResponse:
+      type: object
+      additionalProperties: false
+      required: [access_token, token_type, expires_in, user]
+      properties:
+        access_token:
+          type: string
+          minLength: 1
+        token_type:
+          type: string
+          const: Bearer
+        expires_in:
+          type: integer
+          description: 访问令牌剩余秒数
+          minimum: 1
+        user:
+          $ref: '#/components/schemas/PrivateCurrentUser'
+    RegisterResponse:
+      type: object
+      additionalProperties: false
+      required: [access_token, token_type, expires_in, user]
+      properties:
+        access_token:
+          type: string
+          minLength: 1
+        token_type:
+          type: string
+          const: Bearer
+        expires_in:
+          type: integer
+          minimum: 1
+        user:
+          allOf:
+            - $ref: '#/components/schemas/PrivateCurrentUser'
+            - type: object
+              properties:
+                role:
+                  const: user
+                status:
+                  const: active
+    PrivateCurrentUser:
+      type: object
+      additionalProperties: false
+      required: [id, email, display_name, role, status]
+      properties:
+        id:
+          $ref: '#/components/schemas/BusinessId'
+        email:
+          $ref: '#/components/schemas/Email'
+        display_name:
+          type: string
+        role:
+          $ref: '#/components/schemas/Role'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+    PublicUserSummary:
+      type: object
+      additionalProperties: false
+      required: [id, display_name]
+      description: 其他用户可见的最小资料；不得包含 email、role 或 status
+      properties:
+        id:
+          $ref: '#/components/schemas/BusinessId'
+        display_name:
+          type: string
+
+    Security:
+      type: object
+      additionalProperties: false
+      required: [id, code, name, exchange]
+      properties:
+        id:
+          $ref: '#/components/schemas/BusinessId'
+        code:
+          type: string
+          minLength: 1
+          maxLength: 16
+          example: NOVA
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+          example: 星湾科技
+        exchange:
+          type: string
+          minLength: 1
+          maxLength: 16
+          example: XSEA
+    SecurityListResponse:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Security'
+        page:
+          $ref: '#/components/schemas/CursorPage'
+
+    Circle:
+      type: object
+      additionalProperties: false
+      required: [id, slug, name, description, member_count, is_member, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/BusinessId'
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 500
+        member_count:
+          type: integer
+          minimum: 0
+        is_member:
+          type: boolean
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+    CircleSummary:
+      type: object
+      additionalProperties: false
+      required: [id, slug, name]
+      properties:
+        id:
+          $ref: '#/components/schemas/BusinessId'
+        slug:
+          type: string
+        name:
+          type: string
+    CircleListResponse:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Circle'
+        page:
+          $ref: '#/components/schemas/CursorPage'
+    SetCircleMembershipRequest:
+      type: object
+      additionalProperties: false
+      required: [joined]
+      properties:
+        joined:
+          type: boolean
+    CircleMembership:
+      type: object
+      additionalProperties: false
+      required: [circle_id, user_id, joined, joined_at]
+      oneOf:
+        - properties:
+            joined:
+              const: true
+            joined_at:
+              $ref: '#/components/schemas/Timestamp'
+        - properties:
+            joined:
+              const: false
+            joined_at:
+              type: 'null'
+      properties:
+        circle_id:
+          $ref: '#/components/schemas/BusinessId'
+        user_id:
+          $ref: '#/components/schemas/BusinessId'
+        joined:
+          type: boolean
+        joined_at:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+
+    # 教学提示：创建 DTO 不含 author_id；所有权只能来自 JWT。
+    CreatePostRequest:
+      type: object
+      additionalProperties: false
+      required: [circle_id, title, body, security_ids]
+      properties:
+        circle_id:
+          $ref: '#/components/schemas/BusinessId'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        body:
+          type: string
+          minLength: 1
+          maxLength: 10000
+        security_ids:
+          type: array
+          minItems: 1
+          maxItems: 5
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/BusinessId'
+    UpdatePostRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      minProperties: 2
+      properties:
+        version:
+          $ref: '#/components/schemas/Version'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        body:
+          type: string
+          minLength: 1
+          maxLength: 10000
+        security_ids:
+          type: array
+          minItems: 1
+          maxItems: 5
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/BusinessId'
+    Post:
+      type: object
+      additionalProperties: false
+      required:
+        [id, circle, author, title, body, securities, comment_count, visibility, version, moderation_version, created_at, updated_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/BusinessId'
+        circle:
+          $ref: '#/components/schemas/CircleSummary'
+        author:
+          $ref: '#/components/schemas/PublicUserSummary'
+        title:
+          type: string
+        body:
+          type: string
+        securities:
+          type: array
+          minItems: 1
+          maxItems: 5
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Security'
+        comment_count:
+          type: integer
+          minimum: 0
+        visibility:
+          $ref: '#/components/schemas/Visibility'
+        version:
+          $ref: '#/components/schemas/Version'
+        moderation_version:
+          $ref: '#/components/schemas/Version'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+    PostListResponse:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Post'
+        page:
+          $ref: '#/components/schemas/CursorPage'
+
+    CreateCommentRequest:
+      type: object
+      additionalProperties: false
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        parent_comment_id:
+          oneOf:
+            - $ref: '#/components/schemas/BusinessId'
+            - type: 'null'
+          default: null
+    Comment:
+      type: object
+      additionalProperties: false
+      required: [id, post_id, parent_comment_id, author, body, moderation_version, created_at, updated_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/BusinessId'
+        post_id:
+          $ref: '#/components/schemas/BusinessId'
+        parent_comment_id:
+          oneOf:
+            - $ref: '#/components/schemas/BusinessId'
+            - type: 'null'
+        author:
+          $ref: '#/components/schemas/PublicUserSummary'
+        body:
+          type: string
+        moderation_version:
+          $ref: '#/components/schemas/Version'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+    CommentListResponse:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Comment'
+        page:
+          $ref: '#/components/schemas/CursorPage'
+
+    CreateReportRequest:
+      type: object
+      additionalProperties: false
+      required: [target_type, target_id, reason]
+      properties:
+        target_type:
+          $ref: '#/components/schemas/ContentType'
+        target_id:
+          $ref: '#/components/schemas/BusinessId'
+        reason:
+          $ref: '#/components/schemas/ReportReason'
+        details:
+          type: string
+          maxLength: 1000
+    ReportReceipt:
+      type: object
+      additionalProperties: false
+      required: [id, target_type, target_id, status, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/BusinessId'
+        target_type:
+          $ref: '#/components/schemas/ContentType'
+        target_id:
+          $ref: '#/components/schemas/BusinessId'
+        status:
+          $ref: '#/components/schemas/ReportStatus'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    NotificationType:
+      type: string
+      enum: [comment, reply, content_hidden, content_restored]
+    Notification:
+      type: object
+      additionalProperties: false
+      required: [id, type, actor, post_id, comment_id, read_at, created_at]
+      oneOf:
+        - description: 新评论或回复通知；actor 与 comment_id 必须存在
+          properties:
+            type:
+              enum: [comment, reply]
+            actor:
+              $ref: '#/components/schemas/PublicUserSummary'
+            comment_id:
+              $ref: '#/components/schemas/BusinessId'
+        - description: 内容治理通知；不暴露管理员身份
+          properties:
+            type:
+              enum: [content_hidden, content_restored]
+            actor:
+              type: 'null'
+      properties:
+        id:
+          $ref: '#/components/schemas/BusinessId'
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        actor:
+          oneOf:
+            - $ref: '#/components/schemas/PublicUserSummary'
+            - type: 'null'
+        post_id:
+          $ref: '#/components/schemas/BusinessId'
+        comment_id:
+          oneOf:
+            - $ref: '#/components/schemas/BusinessId'
+            - type: 'null'
+          description: 帖子治理通知为 null；评论治理通知及 comment/reply 通知为评论 ID
+        read_at:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+    NotificationListResponse:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        page:
+          $ref: '#/components/schemas/CursorPage'
+    MarkNotificationsReadResponse:
+      type: object
+      additionalProperties: false
+      required: [read_count, read_at]
+      properties:
+        read_count:
+          type: integer
+          minimum: 0
+        read_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    AdminReportDecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [decision]
+      properties:
+        decision:
+          $ref: '#/components/schemas/AdminDecision'
+        note:
+          type: string
+          maxLength: 1000
+    ContentSnapshot:
+      type: object
+      additionalProperties: false
+      required: [target_type, id, visibility, moderation_version, deleted, title, excerpt]
+      properties:
+        target_type:
+          $ref: '#/components/schemas/ContentType'
+        id:
+          $ref: '#/components/schemas/BusinessId'
+        visibility:
+          $ref: '#/components/schemas/Visibility'
+        moderation_version:
+          $ref: '#/components/schemas/Version'
+        deleted:
+          type: boolean
+        title:
+          type: [string, 'null']
+          maxLength: 120
+          description: 评论为 null
+        excerpt:
+          type: [string, 'null']
+          maxLength: 500
+          description: 作者已删除时为 null；不得用于普通内容查询
+    AdminReport:
+      type: object
+      additionalProperties: false
+      required:
+        [id, reporter, target, reason, details, status, decided_action, decided_by, created_at, decided_at]
+      oneOf:
+        - description: 待处理举报尚无决策者和决策时间
+          properties:
+            status:
+              const: pending
+            decided_action:
+              type: 'null'
+            decided_by:
+              type: 'null'
+            decided_at:
+              type: 'null'
+        - description: 管理员忽略举报
+          properties:
+            status:
+              const: ignored
+            decided_action:
+              const: ignore
+            decided_by:
+              $ref: '#/components/schemas/PublicUserSummary'
+            decided_at:
+              $ref: '#/components/schemas/Timestamp'
+        - description: 管理员隐藏目标
+          properties:
+            status:
+              const: resolved
+            decided_action:
+              const: hide
+            decided_by:
+              $ref: '#/components/schemas/PublicUserSummary'
+            decided_at:
+              $ref: '#/components/schemas/Timestamp'
+        - description: 作者删除目标，系统自动收口举报
+          properties:
+            status:
+              const: resolved
+            decided_action:
+              const: author_deleted
+            decided_by:
+              type: 'null'
+            decided_at:
+              $ref: '#/components/schemas/Timestamp'
+      properties:
+        id:
+          $ref: '#/components/schemas/BusinessId'
+        reporter:
+          $ref: '#/components/schemas/PublicUserSummary'
+        target:
+          $ref: '#/components/schemas/ContentSnapshot'
+        reason:
+          $ref: '#/components/schemas/ReportReason'
+        details:
+          type: [string, 'null']
+        status:
+          $ref: '#/components/schemas/ReportStatus'
+        decided_action:
+          oneOf:
+            - $ref: '#/components/schemas/ReportDecision'
+            - type: 'null'
+        decided_by:
+          oneOf:
+            - $ref: '#/components/schemas/PublicUserSummary'
+            - type: 'null'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        decided_at:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+    AdminReportListResponse:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminReport'
+        page:
+          $ref: '#/components/schemas/CursorPage'
+    RestoreContentRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_moderation_version]
+      properties:
+        expected_moderation_version:
+          $ref: '#/components/schemas/Version'
+    RestoredContent:
+      type: object
+      additionalProperties: false
+      required: [target_type, target_id, visibility, moderation_version, restored_at]
+      properties:
+        target_type:
+          $ref: '#/components/schemas/ContentType'
+        target_id:
+          $ref: '#/components/schemas/BusinessId'
+        visibility:
+          type: string
+          const: visible
+        moderation_version:
+          $ref: '#/components/schemas/Version'
+        restored_at:
+          $ref: '#/components/schemas/Timestamp'
+    AuditLog:
+      type: object
+      additionalProperties: false
+      required: [id, admin, action, target_type, target_id, report_id, note, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/BusinessId'
+        admin:
+          $ref: '#/components/schemas/PublicUserSummary'
+        action:
+          $ref: '#/components/schemas/AuditAction'
+        target_type:
+          $ref: '#/components/schemas/ContentType'
+        target_id:
+          $ref: '#/components/schemas/BusinessId'
+        report_id:
+          oneOf:
+            - $ref: '#/components/schemas/BusinessId'
+            - type: 'null'
+        note:
+          type: [string, 'null']
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+    AuditLogListResponse:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLog'
+        page:
+          $ref: '#/components/schemas/CursorPage'
+
+    CursorPage:
+      type: object
+      additionalProperties: false
+      required: [next_cursor, has_more]
+      oneOf:
+        - properties:
+            has_more:
+              const: true
+            next_cursor:
+              type: string
+              minLength: 1
+        - properties:
+            has_more:
+              const: false
+            next_cursor:
+              type: 'null'
+      properties:
+        next_cursor:
+          type: [string, 'null']
+          description: "has_more=true 时必须非空；没有下一页时必须为 null；客户端不得解析"
+        has_more:
+          type: boolean
+          description: true 当且仅当 next_cursor 为非空字符串
+
+    ErrorCode:
+      type: string
+      description: 稳定、供程序判断的 snake_case 错误码
+      enum:
+        - invalid_request
+        - invalid_json
+        - invalid_cursor
+        - unauthenticated
+        - invalid_credentials
+        - forbidden
+        - membership_required
+        - not_found
+        - email_taken
+        - idempotency_conflict
+        - version_conflict
+        - moderation_version_conflict
+        - content_not_editable
+        - report_already_decided
+        - self_report_forbidden
+        - content_not_restorable
+        - validation_failed
+        - parent_comment_invalid
+        - payload_too_large
+        - unsupported_media_type
+        - internal_error
+    FieldViolation:
+      type: object
+      additionalProperties: false
+      required: [field, reason]
+      properties:
+        field:
+          type: string
+          description: JSON 字段路径或 query/header/path 参数名
+        reason:
+          type: string
+          description: 不包含内部实现细节的说明
+    ErrorObject:
+      type: object
+      additionalProperties: false
+      required: [code, message, request_id, details]
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+          minLength: 1
+        request_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldViolation'
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorObject'

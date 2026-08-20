@@ -9,6 +9,7 @@
 | [Task API](projects/01-task-api/README.md) | 进行中 | HTTP、JSON、错误处理、测试、并发安全、文件持久化 |
 | [并发网址检测器](projects/02-url-checker/README.md) | 待开始 | goroutine、channel、Worker Pool、Context、超时 |
 | [日志分析器](projects/03-log-analyzer/README.md) | 待开始 | 文件读取、解析、统计、并发处理、基准测试 |
+| [原创投资内容社区](projects/04-investment-community/README.md) | 开发中 | MySQL、JWT、分层、事务、幂等、治理、审计、集成测试 |
 
 详细顺序和统一命令见 [projects/README.md](projects/README.md)。
 
@@ -45,6 +46,6 @@ go vet ./...
 
 ## 学习方式
 
-每次只完成 README 中的一个里程碑：先手写，再运行，最后让 GPT 按验收条件审查。项目之间暂时不共享业务代码，也不使用框架、数据库或第三方依赖。
+每次只完成 README 中的一个里程碑：先手写，再运行，最后让 GPT 按验收条件审查。项目之间不共享业务代码。前三个基础项目坚持标准库；第四个高级项目只引入 MySQL Driver、JWT 和 bcrypt 所需的最小安全依赖，不引入 Web 框架。
 
 旧练习都保存在 [practice/README.md](practice/README.md)，它们是复习资料，不再决定主学习顺序。

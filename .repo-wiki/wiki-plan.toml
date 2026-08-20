@@ -6,8 +6,12 @@ max_context_documents = 4
 
 [scope]
 include = ["*.md", "**/*.md"]
-exclude = [".git/**", "practice/**/tasks.md"]
-historical = ["docs/plans/spec-go-learning-foundation.md"]
+exclude = [".git/**", "HANDOFF.md", "practice/**/tasks.md"]
+historical = [
+  "docs/plans/spec-go-learning-foundation.md",
+  "docs/plans/spec-refactor-learning-structure.md",
+  "docs/plans/spec-address-review-feedback.md",
+]
 
 [[documents]]
 id = "docs-home"
@@ -21,7 +25,7 @@ tags = ["docs", "learning"]
 id = "project-collection-refactor"
 path = "docs/plans/spec-refactor-learning-structure.md"
 title = "Go 实战项目集重构方案"
-role = "canonical"
+role = "historical"
 goal = "约束练习归档、多项目结构和最小 Task API 起点"
 tags = ["architecture", "refactor", "projects"]
 
@@ -29,9 +33,169 @@ tags = ["architecture", "refactor", "projects"]
 id = "project-review-feedback"
 path = "docs/plans/spec-address-review-feedback.md"
 title = "项目集审查反馈落实规格"
-role = "canonical"
+role = "historical"
 goal = "约束 Task API 网络边界、HTTP 契约测试和三个项目的验收口径"
 tags = ["review", "testing", "projects"]
+
+[[documents]]
+id = "investment-community-design"
+path = "docs/plans/2026-08-19-investment-community-design.md"
+title = "原创投资内容社区设计"
+role = "canonical"
+goal = "冻结高级个人项目的原创边界、架构、数据和治理不变量"
+tags = ["architecture", "go", "mysql", "governance"]
+
+[[documents]]
+id = "investment-community-spec"
+path = "docs/plans/spec-investment-community.md"
+title = "原创投资内容社区开发规格"
+role = "canonical"
+goal = "约束 reference/starter 双轨、业务闭环和验收门槛"
+tags = ["spec", "go", "learning"]
+
+[[documents]]
+id = "investment-community-implementation"
+path = "docs/plans/2026-08-19-investment-community-implementation.md"
+title = "原创投资内容社区实施计划"
+role = "reference"
+goal = "记录八个依赖开发块、TDD 顺序和复审门禁"
+tags = ["implementation", "tdd", "projects"]
+
+[[documents]]
+id = "investment-community-architecture"
+path = "projects/04-investment-community/docs/architecture.md"
+title = "投资内容社区架构"
+role = "canonical"
+goal = "说明原创分层、事务、身份与并发边界"
+tags = ["architecture", "backend", "mysql"]
+
+[[documents]]
+id = "investment-community-learning"
+path = "projects/04-investment-community/docs/learning/README.md"
+title = "投资内容社区八阶段学习路线"
+role = "reference"
+goal = "指导学习者在 starter 中按 RED/GREEN 顺序独立重写"
+tags = ["learning", "tdd", "starter"]
+
+[[documents]]
+id = "practice-tasks-overview"
+path = "practice/TASKS-OVERVIEW.md"
+title = "Practice 练习任务总览"
+role = "reference"
+goal = "导航语法练习任务与参考答案"
+tags = ["practice", "learning"]
+
+[[documents]]
+id = "investment-community-chunk-analysis"
+path = "docs/plans/2026-08-19-investment-community-implementation.chunked-analysis.md"
+title = "投资内容社区分块执行分析"
+role = "reference"
+goal = "记录实施块依赖、复审策略和执行顺序"
+tags = ["implementation", "chunks"]
+
+[[documents]]
+id = "investment-community-acceptance"
+path = "projects/04-investment-community/contracts/acceptance-scenarios.md"
+title = "投资内容社区验收场景"
+role = "canonical"
+goal = "以 Given/When/Then 固定 21 个 API 的业务行为"
+tags = ["contract", "acceptance", "api"]
+
+[[documents]]
+id = "investment-community-ledger"
+path = "projects/04-investment-community/DEVELOPMENT_LEDGER.md"
+title = "投资内容社区开发总账"
+role = "canonical"
+goal = "保存跨对话可恢复的提交、验证、未完成块和下一步"
+tags = ["ledger", "handoff", "progress"]
+
+[[documents]]
+id = "investment-community-data-model"
+path = "projects/04-investment-community/docs/data-model.md"
+title = "投资内容社区数据模型"
+role = "canonical"
+goal = "解释表、约束、索引、Migration 和并发数据不变量"
+tags = ["mysql", "schema", "data"]
+
+[[documents]]
+id = "investment-community-governance"
+path = "projects/04-investment-community/docs/governance.md"
+title = "投资内容社区治理设计"
+role = "canonical"
+goal = "固定举报、隐藏、恢复、通知、审计和锁顺序"
+tags = ["governance", "transactions", "audit"]
+
+[[documents]]
+id = "investment-community-originality"
+path = "projects/04-investment-community/docs/originality.md"
+title = "投资内容社区原创边界"
+role = "canonical"
+goal = "证明实现、数据和教学材料不复制公司内部资产"
+tags = ["originality", "scope"]
+
+[[documents]]
+id = "investment-community-stage-01"
+path = "projects/04-investment-community/docs/learning/stage-01.md"
+title = "阶段 01：工程地基"
+role = "reference"
+goal = "指导配置、HTTP 生命周期和 Migration 重写"
+tags = ["learning", "stage-01"]
+
+[[documents]]
+id = "investment-community-stage-02"
+path = "projects/04-investment-community/docs/learning/stage-02.md"
+title = "阶段 02：认证"
+role = "reference"
+goal = "指导密码、JWT、数据库身份和 RBAC 重写"
+tags = ["learning", "stage-02"]
+
+[[documents]]
+id = "investment-community-stage-03"
+path = "projects/04-investment-community/docs/learning/stage-03.md"
+title = "阶段 03：证券与圈子"
+role = "reference"
+goal = "指导虚构目录、游标和成员关系重写"
+tags = ["learning", "stage-03"]
+
+[[documents]]
+id = "investment-community-stage-04"
+path = "projects/04-investment-community/docs/learning/stage-04.md"
+title = "阶段 04：帖子"
+role = "reference"
+goal = "指导帖子、证券标签、幂等和乐观锁重写"
+tags = ["learning", "stage-04"]
+
+[[documents]]
+id = "investment-community-stage-05"
+path = "projects/04-investment-community/docs/learning/stage-05.md"
+title = "阶段 05：评论与通知"
+role = "reference"
+goal = "指导评论回复、通知和事务边界重写"
+tags = ["learning", "stage-05"]
+
+[[documents]]
+id = "investment-community-stage-06"
+path = "projects/04-investment-community/docs/learning/stage-06.md"
+title = "阶段 06：举报"
+role = "reference"
+goal = "指导举报查重、权限和 author_deleted 收口"
+tags = ["learning", "stage-06"]
+
+[[documents]]
+id = "investment-community-stage-07"
+path = "projects/04-investment-community/docs/learning/stage-07.md"
+title = "阶段 07：治理与审计"
+role = "reference"
+goal = "指导治理状态机、锁序、版本和审计重写"
+tags = ["learning", "stage-07"]
+
+[[documents]]
+id = "investment-community-stage-08"
+path = "projects/04-investment-community/docs/learning/stage-08.md"
+title = "阶段 08：工程化交付"
+role = "reference"
+goal = "指导 Docker、CI、OpenAPI、验收和展示收口"
+tags = ["learning", "stage-08"]
 
 [[routes]]
 id = "project-structure"
@@ -40,5 +204,15 @@ path_globs = ["README.md", "practice/**", "projects/**", "docs/**"]
 context_docs = ["docs-home", "@nearest-readme"]
 suggest_update_docs = ["docs-home", "@nearest-readme"]
 gate_globs = []
+require_update_any = []
+require_update_all = []
+
+[[routes]]
+id = "investment-community"
+keywords = ["投资社区", "治理", "举报", "审核", "通知", "MySQL", "starter", "reference"]
+path_globs = ["projects/04-investment-community/**", "docs/plans/*investment-community*"]
+context_docs = ["investment-community-spec", "investment-community-design", "investment-community-architecture", "investment-community-learning"]
+suggest_update_docs = ["docs-home", "investment-community-spec", "investment-community-architecture", "investment-community-learning", "@nearest-readme"]
+gate_globs = ["projects/04-investment-community/**"]
 require_update_any = []
 require_update_all = []
