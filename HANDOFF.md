@@ -5,13 +5,13 @@ plan_file: docs/plans/2026-08-19-investment-community-implementation.md
 analysis_file: docs/plans/2026-08-19-investment-community-implementation.chunked-analysis.md
 started: 2026-08-19T14:00:00+08:00
 last_updated: 2026-08-20T00:00:00+08:00
-status: PAUSED_BY_USER
+status: IN_PROGRESS
 
 ## Execution State
 
 current_step: 7
 total_steps: 8
-next_chunk: chunk-07-wiring-and-review
+next_chunk: chunk-08
 chunk_timeout_minutes: 20
 
 ## Plan Health
@@ -30,7 +30,7 @@ plan_drift_triggered: false
 | 4 | chunk-04 | 帖子、标签与信息流 | general-go/db | COMPLEX | APPROVED | chunk-03 | 52c04cb | 0 |
 | 5 | chunk-05 | 评论、回复与通知 | general-go/db | COMPLEX | APPROVED | chunk-04 | 1bfe56e | 0 |
 | 6 | chunk-06 | 举报受理 | general-go/db | MODERATE | APPROVED | chunk-05 | 421458e | 0 |
-| 7 | chunk-07 | 治理、恢复与审计 | general-go/db | COMPLEX | WIP_SAVED | chunk-06 | wip commit; see HEAD | 0 |
+| 7 | chunk-07 | 治理、恢复与审计 | general-go/db | COMPLEX | APPROVED | chunk-06 | 本次 chunk-07 完成提交 | 2 |
 | 8 | chunk-08 | 工程化与教学交付 | docs/contracts/ci | COMPLEX | PENDING | chunk-07 | - | 0 |
 
 ## Dependency Graph
@@ -39,7 +39,7 @@ plan_drift_triggered: false
 
 ## Current Chunk Context
 
-chunk-07 的 domain/usecase/HTTP/MySQL 核心和测试已写入。默认 reference 测试通过；真实 MySQL 的并发决策、审计失败回滚、治理重试/ABA 测试通过。仍缺 router/main 装配、HTTP 实测、完整门禁和复审，不得打 s07 完成 Tag。永久细节见 `projects/04-investment-community/DEVELOPMENT_LEDGER.md`。
+chunk-07 已完成路由/main 装配、真实 HTTP+MySQL hide→audit→restore、统一目标优先锁序、并发相同/不同决策、事务快照和 ABA 测试，并通过规格与质量复审。下一步执行 chunk-08 工程化和教学交付。
 
 ## Escalations
 

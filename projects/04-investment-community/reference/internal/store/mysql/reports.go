@@ -17,7 +17,12 @@ func (store *Store) CreateReport(ctx context.Context, input domain.CreateReportP
 	}
 	defer tx.Rollback()
 
-	// 查重必须早于目标可见性检查。目标稍后被隐藏时，网络重试仍应返回原举报而不是 404。
+	// 举报创建与治理统一先锁目标，避免一边持有举报锁、一边持有目标锁形成死锁环。
+	// 这里只取得存在性和状态快照；已有举报仍优先返回，目标可见性只约束第一次创建。
+	target, err := lockGovernanceTarget(ctx, tx, input.TargetType, input.TargetID)
+	if err != nil {
+		return domain.ReportReceipt{}, false, err
+	}
 	receipt, found, err := findExistingReport(ctx, tx, input.ReporterID, input.TargetType, input.TargetID, true)
 	if err != nil {
 		return domain.ReportReceipt{}, false, err
@@ -29,11 +34,13 @@ func (store *Store) CreateReport(ctx context.Context, input domain.CreateReportP
 		return receipt, true, nil
 	}
 
-	authorID, err := lockReportTarget(ctx, tx, input.TargetType, input.TargetID)
-	if err != nil {
-		return domain.ReportReceipt{}, false, err
+	if target.deleted || target.visibility != domain.VisibilityVisible {
+		if input.TargetType == domain.ContentTypePost {
+			return domain.ReportReceipt{}, false, domain.ErrPostNotFound
+		}
+		return domain.ReportReceipt{}, false, domain.ErrCommentNotFound
 	}
-	if authorID == input.ReporterID {
+	if target.authorID == input.ReporterID {
 		return domain.ReportReceipt{}, false, domain.ErrSelfReportForbidden
 	}
 	var result sql.Result
@@ -112,29 +119,6 @@ func findReportReceiptByID(ctx context.Context, queryer postQueryer, id int64) (
 	receipt.Status = externalReportStatus(status)
 	receipt.CreatedAt = receipt.CreatedAt.UTC()
 	return receipt, true, nil
-}
-
-func lockReportTarget(ctx context.Context, tx *sql.Tx, targetType domain.ContentType, targetID int64) (int64, error) {
-	var authorID int64
-	var visibility string
-	var deleted sql.NullTime
-	statement := "SELECT author_id,visibility,deleted_at FROM posts WHERE id=? FOR UPDATE"
-	notFound := domain.ErrPostNotFound
-	if targetType == domain.ContentTypeComment {
-		statement = "SELECT author_id,visibility,deleted_at FROM comments WHERE id=? FOR UPDATE"
-		notFound = domain.ErrCommentNotFound
-	}
-	err := tx.QueryRowContext(ctx, statement, targetID).Scan(&authorID, &visibility, &deleted)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, notFound
-	}
-	if err != nil {
-		return 0, fmt.Errorf("lock report target: %w", err)
-	}
-	if deleted.Valid || visibility != "visible" {
-		return 0, notFound
-	}
-	return authorID, nil
 }
 
 func (store *Store) ListReports(ctx context.Context, query domain.ReportListQuery) ([]domain.AdminReport, error) {

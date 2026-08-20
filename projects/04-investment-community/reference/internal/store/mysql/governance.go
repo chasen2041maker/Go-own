@@ -111,10 +111,21 @@ func (store *Store) decideReportOnce(ctx context.Context, input domain.DecideRep
 	default:
 		return domain.AdminReport{}, &domain.ValidationError{Field: "decision", Reason: "必须是 ignore 或 hide"}
 	}
-	if err := tx.Commit(); err != nil {
+	// 响应必须属于本次治理事务：若提交后再查，紧随其后的 restore 可能让 hide 响应越界看到 visible。
+	return snapshotAndCommitDecision(func() (domain.AdminReport, error) {
+		return store.findAdminReportByID(ctx, tx, input.ReportID)
+	}, tx.Commit)
+}
+
+func snapshotAndCommitDecision(snapshot func() (domain.AdminReport, error), commit func() error) (domain.AdminReport, error) {
+	report, err := snapshot()
+	if err != nil {
+		return domain.AdminReport{}, fmt.Errorf("load report decision snapshot: %w", err)
+	}
+	if err := commit(); err != nil {
 		return domain.AdminReport{}, fmt.Errorf("commit report decision: %w", err)
 	}
-	return store.findAdminReportByID(ctx, store.db, input.ReportID)
+	return report, nil
 }
 
 func (store *Store) RestoreContent(ctx context.Context, input domain.RestoreContentParams) (domain.RestoredContent, error) {
@@ -164,7 +175,8 @@ func (store *Store) restoreContentOnce(ctx context.Context, input domain.Restore
 		return domain.RestoredContent{}, domain.ErrModerationVersionConflict
 	}
 
-	now := time.Now().UTC()
+	// MySQL DATETIME(6) 只保留微秒；先对齐精度，确保首次响应与安全重试从审计读回的时间完全一致。
+	now := time.Now().UTC().Truncate(time.Microsecond)
 	table := "posts"
 	if input.TargetType == domain.ContentTypeComment {
 		table = "comments"

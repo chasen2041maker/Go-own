@@ -72,6 +72,11 @@ func main() {
 		slog.Error("create report service", "error", err)
 		os.Exit(1)
 	}
+	governance, err := usecase.NewGovernanceService(store)
+	if err != nil {
+		slog.Error("create governance service", "error", err)
+		os.Exit(1)
+	}
 	cursors, err := httpapi.NewCursorCodec(config.JWTSecret, 24*time.Hour)
 	if err != nil {
 		slog.Error("create cursor codec", "error", err)
@@ -79,7 +84,7 @@ func main() {
 	}
 
 	// API 可以先启动，再由 /readyz 诚实反映数据库状态；迁移由独立命令执行。
-	router := httpapi.NewRouterWithReports(database, config.ReadinessTimeout, auth, community, posts, interactions, reports, cursors)
+	router := httpapi.NewRouterWithGovernance(database, config.ReadinessTimeout, auth, community, posts, interactions, reports, governance, cursors)
 	server := platform.NewHTTPServer(config, router)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

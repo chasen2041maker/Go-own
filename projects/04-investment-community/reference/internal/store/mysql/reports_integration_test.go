@@ -68,3 +68,50 @@ func TestReportDuplicateBeforeVisibilitySelfRuleAndAdminQueue(t *testing.T) {
 		t.Fatal("created report missing from admin queue")
 	}
 }
+
+func TestCreateReportLocksTargetBeforeCheckingExistingReport(t *testing.T) {
+	database, store := openCommunityIntegrationStore(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	fixture := newPostFixture(t, ctx, database)
+	post := fixture.create(t, ctx, mustIntegrationPostService(t, store), "report-lock-order", "锁序目标", []int64{fixture.securityA})
+	reporterID := insertIntegrationUser(t, ctx, database, "report-lock-order-"+fixture.suffix)
+	t.Cleanup(func() {
+		_, _ = database.Exec("DELETE FROM reports WHERE post_id=?", post.ID)
+		deleteIntegrationIDs(database, "users", []int64{reporterID})
+	})
+	service, err := usecase.NewReportService(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := usecase.CreateReportInput{ReporterID: reporterID, TargetType: domain.ContentTypePost, TargetID: post.ID, Reason: domain.ReportReasonSpam}
+	created, err := service.CreateReport(ctx, input)
+	if err != nil || created.Existing {
+		t.Fatalf("initial report = %#v, error = %v", created, err)
+	}
+
+	blocker, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blocker.Rollback()
+	var lockedPostID int64
+	if err := blocker.QueryRowContext(ctx, "SELECT id FROM posts WHERE id=? FOR UPDATE", post.ID).Scan(&lockedPostID); err != nil {
+		t.Fatal(err)
+	}
+
+	blockedCtx, blockedCancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer blockedCancel()
+	_, err = service.CreateReport(blockedCtx, input)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("CreateReport while target locked error = %v, want context deadline", err)
+	}
+	if err := blocker.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+
+	replayed, err := service.CreateReport(ctx, input)
+	if err != nil || !replayed.Existing || replayed.Report.ID != created.Report.ID {
+		t.Fatalf("replayed after target unlock = %#v, error = %v", replayed, err)
+	}
+}

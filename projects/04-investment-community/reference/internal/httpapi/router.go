@@ -20,7 +20,7 @@ func NewRouter(checker ReadinessChecker, readinessTimeout time.Duration, authApp
 	if len(authApplications) > 0 {
 		authApplication = authApplications[0]
 	}
-	return newRouter(checker, readinessTimeout, authApplication, nil, nil, nil, nil, nil)
+	return newRouter(checker, readinessTimeout, authApplication, nil, nil, nil, nil, nil, nil)
 }
 
 // NewRouterWithCommunity 保留原有 NewRouter 的窄测试入口，同时为业务进程显式装配本阶段能力。
@@ -31,25 +31,32 @@ func NewRouterWithCommunity(
 	communityApplication CommunityApplication,
 	cursors *CursorCodec,
 ) http.Handler {
-	return newRouter(checker, readinessTimeout, authApplication, communityApplication, nil, nil, nil, cursors)
+	return newRouter(checker, readinessTimeout, authApplication, communityApplication, nil, nil, nil, nil, cursors)
 }
 
 // NewRouterWithCommunityAndPosts 把阶段能力显式注入，后续模块无需让 Handler 直接依赖具体仓储。
 func NewRouterWithCommunityAndPosts(checker ReadinessChecker, readinessTimeout time.Duration, auth AuthApplication,
 	community CommunityApplication, posts PostsApplication, cursors *CursorCodec) http.Handler {
-	return newRouter(checker, readinessTimeout, auth, community, posts, nil, nil, cursors)
+	return newRouter(checker, readinessTimeout, auth, community, posts, nil, nil, nil, cursors)
 }
 
 // NewRouterWithInteractions 组装当前已完成的全部业务切片；每个 Handler 仍只依赖自己的用例接口。
 func NewRouterWithInteractions(checker ReadinessChecker, readinessTimeout time.Duration, auth AuthApplication,
 	community CommunityApplication, posts PostsApplication, interactions InteractionsApplication, cursors *CursorCodec) http.Handler {
-	return newRouter(checker, readinessTimeout, auth, community, posts, interactions, nil, cursors)
+	return newRouter(checker, readinessTimeout, auth, community, posts, interactions, nil, nil, cursors)
 }
 
 func NewRouterWithReports(checker ReadinessChecker, readinessTimeout time.Duration, auth AuthApplication,
 	community CommunityApplication, posts PostsApplication, interactions InteractionsApplication,
 	reports ReportsApplication, cursors *CursorCodec) http.Handler {
-	return newRouter(checker, readinessTimeout, auth, community, posts, interactions, reports, cursors)
+	return newRouter(checker, readinessTimeout, auth, community, posts, interactions, reports, nil, cursors)
+}
+
+// NewRouterWithGovernance 是生产进程的完整装配入口；窄构造器继续服务较早阶段的隔离测试。
+func NewRouterWithGovernance(checker ReadinessChecker, readinessTimeout time.Duration, auth AuthApplication,
+	community CommunityApplication, posts PostsApplication, interactions InteractionsApplication,
+	reports ReportsApplication, governance GovernanceApplication, cursors *CursorCodec) http.Handler {
+	return newRouter(checker, readinessTimeout, auth, community, posts, interactions, reports, governance, cursors)
 }
 
 func newRouter(
@@ -60,6 +67,7 @@ func newRouter(
 	postsApplication PostsApplication,
 	interactionsApplication InteractionsApplication,
 	reportsApplication ReportsApplication,
+	governanceApplication GovernanceApplication,
 	cursors *CursorCodec,
 ) http.Handler {
 	if readinessTimeout <= 0 {
@@ -81,6 +89,9 @@ func newRouter(
 	}
 	if reportsApplication != nil {
 		registerReportRoutes(mux, authApplication, reportsApplication, cursors)
+	}
+	if governanceApplication != nil {
+		registerGovernanceRoutes(mux, authApplication, governanceApplication, cursors)
 	}
 	mux.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
 		WriteError(writer, request, http.StatusNotFound, "not_found", "资源不存在", nil)

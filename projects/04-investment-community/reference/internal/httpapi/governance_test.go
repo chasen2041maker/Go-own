@@ -84,6 +84,38 @@ func TestAuditHTTPDoesNotExposeAdminEmail(t *testing.T) {
 	}
 }
 
+func TestAuditHTTPRejectsInvalidFiltersBeforeApplication(t *testing.T) {
+	applicationCalls := 0
+	application := &fakeGovernanceApplication{list: func(context.Context, usecase.AuditListInput) (usecase.AuditPage, error) {
+		applicationCalls++
+		return usecase.AuditPage{}, nil
+	}}
+	handler := governanceTestHandler(t, adminAuth(), application)
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "unknown action", path: "/api/v1/admin/audit-logs?action=content_deleted"},
+		{name: "unknown target type", path: "/api/v1/admin/audit-logs?target_type=video"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			request.Header.Set("Authorization", "Bearer token")
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusBadRequest || decodeError(t, response).Code != "invalid_request" {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+		})
+	}
+	if applicationCalls != 0 {
+		t.Fatalf("application calls = %d, want 0", applicationCalls)
+	}
+}
+
 func adminAuth() *fakeAuthApplication {
 	return &fakeAuthApplication{authenticate: func(context.Context, string) (domain.User, error) {
 		return domain.User{ID: 7, DisplayName: "管理员", Role: domain.RoleAdmin, Status: domain.UserStatusActive}, nil

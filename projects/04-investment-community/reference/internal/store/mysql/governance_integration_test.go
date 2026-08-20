@@ -53,6 +53,47 @@ func TestConcurrentDecisionHasOneStateChange(t *testing.T) {
 	assertGovernanceCount(t, ctx, database, "SELECT COUNT(*) FROM admin_audit_logs WHERE report_id=?", fixture.reportA, 1)
 }
 
+func TestConcurrentSameHideReturnsSuccessWithOneAuditAndNotification(t *testing.T) {
+	database, store := openCommunityIntegrationStore(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	fixture := newGovernanceFixture(t, ctx, database, store)
+	service := mustGovernanceService(t, store)
+
+	start := make(chan struct{})
+	results := make(chan domain.AdminReport, 2)
+	errorsOut := make(chan error, 2)
+	var group sync.WaitGroup
+	for index, reportID := range []int64{fixture.reportA, fixture.reportB} {
+		group.Add(1)
+		go func(admin domain.User, id int64, requestID string) {
+			defer group.Done()
+			<-start
+			result, err := service.DecideReport(ctx, usecase.DecideReportInput{Admin: admin, ReportID: id,
+				Decision: domain.ReportDecisionHide, Note: "并发相同隐藏", RequestID: requestID})
+			results <- result
+			errorsOut <- err
+		}(fixture.admins[index], reportID, "same-hide-"+string(rune('a'+index)))
+	}
+	close(start)
+	group.Wait()
+	close(results)
+	close(errorsOut)
+	for err := range errorsOut {
+		if err != nil {
+			t.Fatalf("same hide error = %v", err)
+		}
+	}
+	for result := range results {
+		if result.Target.Visibility != domain.VisibilityHidden || result.Decision == nil || *result.Decision != domain.ReportDecisionHide {
+			t.Fatalf("same hide result = %#v", result)
+		}
+	}
+	assertGovernanceCount(t, ctx, database, "SELECT COUNT(*) FROM reports WHERE post_id=? AND status='resolved' AND resolution_action='hide'", fixture.postID, 2)
+	assertGovernanceCount(t, ctx, database, "SELECT COUNT(*) FROM admin_audit_logs WHERE post_id=? AND action='content_hidden'", fixture.postID, 1)
+	assertGovernanceCount(t, ctx, database, "SELECT COUNT(*) FROM notifications WHERE post_id=? AND type='content_hidden'", fixture.postID, 1)
+}
+
 func TestAuditInsertFailureRollsBackGovernance(t *testing.T) {
 	database, store := openCommunityIntegrationStore(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

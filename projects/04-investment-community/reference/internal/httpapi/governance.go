@@ -144,6 +144,16 @@ func (handler governanceHandler) listAudits(writer http.ResponseWriter, request 
 		WriteError(writer, request, failure.status, failure.code, failure.message, nil)
 		return
 	}
+	action := domain.AuditAction(actionRaw)
+	if action != "" && action != domain.AuditActionReportIgnored && action != domain.AuditActionContentHidden && action != domain.AuditActionContentRestored {
+		WriteError(writer, request, http.StatusBadRequest, "invalid_request", "action 筛选值无效", nil)
+		return
+	}
+	targetType := domain.ContentType(targetRaw)
+	if targetType != "" && targetType != domain.ContentTypePost && targetType != domain.ContentTypeComment {
+		WriteError(writer, request, http.StatusBadRequest, "invalid_request", "target_type 必须是 post 或 comment", nil)
+		return
+	}
 	adminRaw, failure := singleQueryValue(values, "admin_id")
 	if failure != nil {
 		WriteError(writer, request, failure.status, failure.code, failure.message, nil)
@@ -157,7 +167,7 @@ func (handler governanceHandler) listAudits(writer http.ResponseWriter, request 
 			return
 		}
 	}
-	binding := auditCursorBinding{ViewerID: admin.ID, Action: domain.AuditAction(actionRaw), TargetType: domain.ContentType(targetRaw), AdminID: adminID, Limit: limit}
+	binding := auditCursorBinding{ViewerID: admin.ID, Action: action, TargetType: targetType, AdminID: adminID, Limit: limit}
 	var after *domain.AuditCursor
 	if cursor != "" {
 		position, err := handler.cursors.DecodeAudit(cursor, binding)
