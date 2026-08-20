@@ -2,7 +2,7 @@
 
 > 快照：2026-08-20（Asia/Taipei）
 >
-> 状态：实现与本地可执行门禁完成；Docker 冷启动/CI 待具备 Docker daemon 权限或推送后的 Linux CI 验证。
+> 状态：V1 全部完成；本地门禁、真实 MySQL、21 接口黑盒验收、Linux Compose 冷构建、Swagger/OpenAPI 探测与 CI 均已验证。
 > 原创边界：只借鉴成熟社区的功能范围；Go 代码、接口、表、测试和虚构数据均独立设计，不复制公司源码、真实数据、密钥或品牌资产。
 
 ## 1. 唯一续接位置
@@ -12,8 +12,8 @@
 | Git 仓库 | `C:\company\own\Go-own` |
 | 开发 worktree | `C:\Users\15234\.codex\visualizations\2026\08\19\01a0186e-78ea-7573-86a7-ef1dd016550d\stock-community-governance-3` |
 | 分支 | `codex/stock-community-governance` |
-| 完成态 HEAD | chunk-08 最终提交（以 `git log -1 --oneline` 为准） |
-| 当前 WIP | 无业务 WIP；仅保留 Docker 冷启动/CI 外部验证 |
+| 完成态 HEAD | `stock-v1/s08-done`（以 `git show -s --oneline stock-v1/s08-done` 为准） |
+| 当前 WIP | 无 |
 | 临时执行状态 | 根目录 `HANDOFF.md` |
 | 规格 | `docs/plans/spec-investment-community.md` |
 | 实施计划 | `docs/plans/2026-08-19-investment-community-implementation.md` |
@@ -33,9 +33,9 @@
 | 06 举报受理 | `421458e` | `stock-v1/s06-done` | 举报创建、查重、自举报拒绝、管理员举报队列 |
 | 07 治理闭环 | `bc20705` | `stock-v1/s07-done` | 目标优先锁序、隐藏/恢复、治理版本、通知、审计、并发与 ABA 防护 |
 
-文档、契约、八阶段教材及本总账的基线提交为 `d798a8b`。`stock-v1/starter` 永久保留为阶段一绿色历史快照，不再移动；主流程在最终 chunk-08 提交后创建新的不可变 `stock-v1/learner-start`，供学习者获得完整教材/契约和最小 starter 起点。
+文档、契约、八阶段教材及本总账的基线提交为 `d798a8b`；chunk-08 工程交付为 `fae8988`，提交后真实 MySQL 审计修复为 `c140790`。`stock-v1/starter` 永久保留为阶段一绿色历史快照，不再移动；最终不可变 `stock-v1/learner-start` 已创建，供学习者获得完整教材/契约和最小 starter 起点。
 
-## 3. chunk-08 当前交付
+## 3. chunk-08 最终交付
 
 已经写入：
 
@@ -61,18 +61,24 @@ python $wikiScript generate --root . --check
 python $wikiScript check --root .
 ```
 
-上述命令均通过；integration 使用独立 `investment_community_test` 且无 SKIP。acceptance 使用演示库与独立 API 端口，显式调用全部 21 个 operationId，并覆盖注册、入圈、发帖/更新、评论/回复通知、举报、隐藏、审计、恢复及删除。Docker 镜像实际构建未作为成功证据：当前沙箱拒绝 Docker 命名管道/Buildx 锁访问；Compose 展开已通过，工作流会在 Linux 冷构建后检查 Swagger 镜像非 root、API/Swagger/OpenAPI 和完整 HTTP 旅程。
+上述本地命令均通过；integration 使用独立 `investment_community_test` 且无 SKIP。acceptance 使用演示库与独立 API 端口，显式调用全部 21 个 operationId，并覆盖注册、入圈、发帖/更新、评论/回复通知、举报、隐藏、审计、恢复及删除。
+
+远端发布树 `71e784c66fcdade3e20129e83cc036bca452e9ee` 与本地代码提交 `c140790` 的 Git tree SHA 同为 `8aa30b3af5ac79773dcfaff6fb1f4bbe7c54e0ca`。GitHub Actions [run 32352250415](https://github.com/chasen2041maker/Go-own/actions/runs/32352250415) 三个 job 全部通过：
+
+- `default`：Linux gofmt、项目默认测试、项目 vet/build；
+- `mysql-and-acceptance`：真实 MySQL 全量 integration 无 SKIP，迁移、Seed、API 就绪和 21 操作 HTTP acceptance；
+- `compose-cold-start`：从空环境 build/start 完整 Compose 栈，探测 API、Swagger 与 OpenAPI，执行 HTTP-only journey，并清理数据卷。
 
 提交后总审计又补齐三项真实 MySQL 证据：通知插入故障时回复整笔回滚、8 个同 key 评论并发只产生一行/一条通知、8 个重复举报并发只产生一个 receipt。并发评论测试曾稳定复现 1213，根因已通过统一“帖子目标 → 幂等键 → 可选父评论”锁序修复；三项聚焦测试连续 5 次通过，全量 integration 随后再次无 SKIP 通过。
 
-本分支最终提交后创建 `stock-v1/s08-done` 与 `stock-v1/learner-start` 两个不可变 Tag。剩余外部证据只有 Docker 冷启动与 GitHub CI；必须在可访问 Docker daemon 的环境复验，不能用静态配置成功替代。
+最终证据提交后，`stock-v1/s08-done` 与 `stock-v1/learner-start` 两个不可变 Tag 指向同一完成态。代码、契约、教学和交付门禁均无剩余必做事项。
 
-## 4. 下一步严格顺序
+## 4. 完成后的使用顺序
 
-1. 把本轮生成的 Git bundle 导入原仓库，使原 `codex/stock-community-governance` 快进到最终提交；
-2. 在具备 Docker daemon 权限的环境执行 `docker compose up -d --build --wait`、Swagger/API 探测和 acceptance；
-3. 推送或手动触发 GitHub Actions，确认 default、mysql-and-acceptance、compose-cold-start 三个 job；
-4. 未经用户要求，不推送、不合并 `main`、不删除 MySQL 测试数据。
+1. 学习者执行 `git switch -c learn-investment-community stock-v1/learner-start`；
+2. 按 `docs/learning/stage-01.md` 到 `stage-08.md` 的 RED → GREEN 顺序在 `starter/` 亲手重写；
+3. 维护者若规划 V2，另建规格、分支和迁移，不改写 V1 的阶段 Tag；
+4. `main` 尚未合并，本次交付保留在 `codex/stock-community-governance`，由用户决定何时合并。
 
 ## 5. 已知环境与基线
 
@@ -82,4 +88,4 @@ python $wikiScript check --root .
 
 ## 6. 续接提示词
 
-> 导入最终 Git bundle 后，在 `codex/stock-community-governance` 继续。chunk-01～08 的实现、复审与本地非 Docker 门禁已完成；只需在有 Docker daemon 权限的环境补跑冷构建/Swagger/acceptance，并确认 GitHub Actions。未经用户要求不要推送或合并。
+> 原创 Go 投资内容社区 V1 已完成，chunk-01～08、真实 MySQL、21 接口黑盒验收、Linux Compose 冷构建、Swagger/OpenAPI 与 GitHub CI 均有绿色证据。学习请从 `stock-v1/learner-start` 新建分支；扩展功能请另开 V2 规格，不修改 V1 不可变 Tag。

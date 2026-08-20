@@ -35,7 +35,7 @@ go test ./projects/01-task-api
 
 读取并解析日志，完成统计报告；正确版本稳定后，再比较串行与并发处理的差异。
 
-### 4. 原创投资内容社区与治理系统（实现完成；Docker 冷启动/CI 待验证）
+### 4. 原创投资内容社区与治理系统（V1 完成；本地与 Linux CI 全部验证）
 
 入口：[04-investment-community/README.md](04-investment-community/README.md)
 

@@ -2,7 +2,7 @@
 
 这里保存跨项目设计记录、当前权威规格和历史重构方案。每个项目的运行方法、需求和验收标准放在对应项目自己的 README 中。
 
-## 当前高级项目（实现完成；Docker 冷启动/CI 待验证）
+## 当前高级项目（V1 完成；本地与 Linux CI 全部验证）
 
 - [投资内容社区设计](plans/2026-08-19-investment-community-design.md)
 - [投资内容社区开发规格](plans/spec-investment-community.md)

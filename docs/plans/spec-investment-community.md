@@ -11,7 +11,7 @@ context:
   - '{project-root}/docs/plans/2026-08-19-investment-community-design.md'
 ---
 
-> 当前证据：实现完成，本地 test/vet/build/integration/acceptance 已验证；Docker 冷启动/CI 待可用环境验证。
+> 当前证据：V1 实现完成；本地 test/vet/build/integration/acceptance 与 Linux CI 的真实 MySQL、Compose 冷构建、Swagger/OpenAPI 探测及 21 接口黑盒旅程均已验证。
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 

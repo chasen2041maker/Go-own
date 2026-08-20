@@ -18,7 +18,7 @@
 
 评审者在干净环境按项目 README 启动 Compose、执行迁移和 Seed，从 Swagger 完成“注册→登录→GET /me→入圈→发帖→评论/回复→查看通知→举报→管理员隐藏→查看审计→恢复”。CI 同时证明默认测试不依赖 Docker、真实 MySQL 行为正确、外部契约没有漂移。
 
-参考轨实现完成，本地 test/vet/build/integration/acceptance 已验证；Docker 冷启动/CI 待可用环境验证。你在 starter 学习分支重做本阶段时，仍必须先写验收测试并观察正确 RED，再实现自己的编排；不能用参考轨已有文件代替自己的验证证据。
+参考轨 V1 已完成：本地 test/vet/build/integration/acceptance 与 Linux CI 的真实 MySQL、Compose 冷构建、Swagger/OpenAPI 探测及 21 接口黑盒旅程均已验证。你在 starter 学习分支重做本阶段时，仍必须先写验收测试并观察正确 RED，再实现自己的编排；不能用参考轨已有文件代替自己的验证证据。
 
 ## 3. 调用链
 

@@ -4,7 +4,7 @@
 
 本项目只借鉴内容社区普遍具有的**功能类别**，不模仿或改写任何公司、客户或商业产品的源码、目录、命名、接口、数据库、数据、密钥和品牌资产。证券、账户、圈子与帖子示例必须完全虚构；项目不接真实行情、不提供交易能力，也不构成投资建议。详细边界见[原创性声明](docs/originality.md)。
 
-> **当前状态**：实现完成，本地 test/vet/build/integration/acceptance 已验证；Docker 冷启动/CI 待可用环境验证。`starter` 仍只保留 `/healthz` 起点，供学习者按八阶段亲手重写；它不会导入 `reference`。
+> **当前状态**：V1 完成。本地 test/vet/build/integration/acceptance 与 Linux CI 的真实 MySQL、Compose 冷构建、Swagger/OpenAPI 探测及 21 接口黑盒旅程均已验证。`starter` 仍只保留 `/healthz` 起点，供学习者按八阶段亲手重写；它不会导入 `reference`。
 
 跨对话续接以 [开发总账](DEVELOPMENT_LEDGER.md) 为准；总账明确区分已提交完成、未提交资产和正在开发的半成品。
 
@@ -37,7 +37,7 @@ compose.yaml     MySQL → migrate → seed → API → Swagger 的本地编排
 git switch -c learn-investment-community stock-v1/learner-start
 ```
 
-历史 Tag `stock-v1/starter` 只表示阶段 01 当时的绿色快照，保留用于追溯，不能移动或复用为最终学习入口。`stock-v1/learner-start` 由最终交付流程在代码提交后创建；若本地尚不存在，应先完成最终提交/Tag 步骤，不能自行把它指向半成品。
+历史 Tag `stock-v1/starter` 只表示阶段 01 当时的绿色快照，保留用于追溯，不能移动或复用为最终学习入口。最终不可变 Tag `stock-v1/learner-start` 已在完成提交后创建；学习者应从它新建分支，不要从阶段中的半成品快照起步。
 
 ## V1 已交付能力
 
