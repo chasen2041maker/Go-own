@@ -38,6 +38,17 @@ type postCursorBinding struct {
 	Limit      int
 }
 
+type commentCursorBinding struct {
+	PostID int64
+	Limit  int
+}
+
+type notificationCursorBinding struct {
+	UserID     int64
+	UnreadOnly bool
+	Limit      int
+}
+
 type cursorPayload struct {
 	Version    int    `json:"v"`
 	Kind       string `json:"k"`
@@ -48,6 +59,9 @@ type cursorPayload struct {
 	CreatedAt  int64  `json:"t,omitempty"`
 	CircleID   int64  `json:"o,omitempty"`
 	SecurityID int64  `json:"s,omitempty"`
+	PostID     int64  `json:"p,omitempty"`
+	UserID     int64  `json:"u,omitempty"`
+	UnreadOnly bool   `json:"n,omitempty"`
 	ID         int64  `json:"i"`
 	ExpiresAt  int64  `json:"x"`
 }
@@ -123,6 +137,40 @@ func (codec *CursorCodec) DecodePost(token string, binding postCursorBinding) (d
 		return domain.PostCursor{}, errInvalidCursor
 	}
 	return domain.PostCursor{CreatedAt: time.UnixMicro(payload.CreatedAt).UTC(), ID: payload.ID}, nil
+}
+
+func (codec *CursorCodec) EncodeComment(binding commentCursorBinding, position domain.CommentCursor) (string, error) {
+	if binding.PostID <= 0 || binding.Limit < 1 || position.ID <= 0 || position.CreatedAt.IsZero() {
+		return "", errInvalidCursor
+	}
+	return codec.encode(cursorPayload{Version: cursorVersion, Kind: "comments", PostID: binding.PostID,
+		Limit: binding.Limit, CreatedAt: position.CreatedAt.UTC().UnixMicro(), ID: position.ID})
+}
+
+func (codec *CursorCodec) DecodeComment(token string, binding commentCursorBinding) (domain.CommentCursor, error) {
+	payload, err := codec.decode(token)
+	if err != nil || payload.Kind != "comments" || payload.PostID != binding.PostID || payload.Limit != binding.Limit ||
+		payload.CreatedAt <= 0 || payload.ID <= 0 {
+		return domain.CommentCursor{}, errInvalidCursor
+	}
+	return domain.CommentCursor{CreatedAt: time.UnixMicro(payload.CreatedAt).UTC(), ID: payload.ID}, nil
+}
+
+func (codec *CursorCodec) EncodeNotification(binding notificationCursorBinding, position domain.NotificationCursor) (string, error) {
+	if binding.UserID <= 0 || binding.Limit < 1 || position.ID <= 0 || position.CreatedAt.IsZero() {
+		return "", errInvalidCursor
+	}
+	return codec.encode(cursorPayload{Version: cursorVersion, Kind: "notifications", UserID: binding.UserID,
+		UnreadOnly: binding.UnreadOnly, Limit: binding.Limit, CreatedAt: position.CreatedAt.UTC().UnixMicro(), ID: position.ID})
+}
+
+func (codec *CursorCodec) DecodeNotification(token string, binding notificationCursorBinding) (domain.NotificationCursor, error) {
+	payload, err := codec.decode(token)
+	if err != nil || payload.Kind != "notifications" || payload.UserID != binding.UserID ||
+		payload.UnreadOnly != binding.UnreadOnly || payload.Limit != binding.Limit || payload.CreatedAt <= 0 || payload.ID <= 0 {
+		return domain.NotificationCursor{}, errInvalidCursor
+	}
+	return domain.NotificationCursor{CreatedAt: time.UnixMicro(payload.CreatedAt).UTC(), ID: payload.ID}, nil
 }
 
 func (codec *CursorCodec) encode(payload cursorPayload) (string, error) {

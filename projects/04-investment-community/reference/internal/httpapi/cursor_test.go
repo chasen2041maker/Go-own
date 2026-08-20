@@ -46,6 +46,32 @@ func TestCursorCodecRoundTripsStablePositions(t *testing.T) {
 	if _, err := codec.DecodePost(postToken, postCursorBinding{CircleID: 8, SecurityID: 3, Limit: 20}); !errors.Is(err, errInvalidCursor) {
 		t.Fatalf("DecodePost(changed filter) error = %v", err)
 	}
+
+	commentBinding := commentCursorBinding{PostID: 11, Limit: 20}
+	commentToken, err := codec.EncodeComment(commentBinding, domain.CommentCursor{CreatedAt: createdAt, ID: 15})
+	if err != nil {
+		t.Fatalf("EncodeComment() error = %v", err)
+	}
+	commentPosition, err := codec.DecodeComment(commentToken, commentBinding)
+	if err != nil || commentPosition.ID != 15 || !commentPosition.CreatedAt.Equal(createdAt) {
+		t.Fatalf("DecodeComment() = %#v, %v", commentPosition, err)
+	}
+	if _, err := codec.DecodeComment(commentToken, commentCursorBinding{PostID: 12, Limit: 20}); !errors.Is(err, errInvalidCursor) {
+		t.Fatalf("DecodeComment(changed post) error = %v", err)
+	}
+
+	notificationBinding := notificationCursorBinding{UserID: 42, UnreadOnly: true, Limit: 10}
+	notificationToken, err := codec.EncodeNotification(notificationBinding, domain.NotificationCursor{CreatedAt: createdAt, ID: 20})
+	if err != nil {
+		t.Fatalf("EncodeNotification() error = %v", err)
+	}
+	notificationPosition, err := codec.DecodeNotification(notificationToken, notificationBinding)
+	if err != nil || notificationPosition.ID != 20 || !notificationPosition.CreatedAt.Equal(createdAt) {
+		t.Fatalf("DecodeNotification() = %#v, %v", notificationPosition, err)
+	}
+	if _, err := codec.DecodeNotification(notificationToken, notificationCursorBinding{UserID: 43, UnreadOnly: true, Limit: 10}); !errors.Is(err, errInvalidCursor) {
+		t.Fatalf("DecodeNotification(changed user) error = %v", err)
+	}
 }
 
 func TestCursorCodecRejectsTamperingChangedFiltersWrongKindAndExpiry(t *testing.T) {

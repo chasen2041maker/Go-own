@@ -20,7 +20,7 @@ func NewRouter(checker ReadinessChecker, readinessTimeout time.Duration, authApp
 	if len(authApplications) > 0 {
 		authApplication = authApplications[0]
 	}
-	return newRouter(checker, readinessTimeout, authApplication, nil, nil, nil)
+	return newRouter(checker, readinessTimeout, authApplication, nil, nil, nil, nil)
 }
 
 // NewRouterWithCommunity 保留原有 NewRouter 的窄测试入口，同时为业务进程显式装配本阶段能力。
@@ -31,13 +31,19 @@ func NewRouterWithCommunity(
 	communityApplication CommunityApplication,
 	cursors *CursorCodec,
 ) http.Handler {
-	return newRouter(checker, readinessTimeout, authApplication, communityApplication, nil, cursors)
+	return newRouter(checker, readinessTimeout, authApplication, communityApplication, nil, nil, cursors)
 }
 
 // NewRouterWithCommunityAndPosts 把阶段能力显式注入，后续模块无需让 Handler 直接依赖具体仓储。
 func NewRouterWithCommunityAndPosts(checker ReadinessChecker, readinessTimeout time.Duration, auth AuthApplication,
 	community CommunityApplication, posts PostsApplication, cursors *CursorCodec) http.Handler {
-	return newRouter(checker, readinessTimeout, auth, community, posts, cursors)
+	return newRouter(checker, readinessTimeout, auth, community, posts, nil, cursors)
+}
+
+// NewRouterWithInteractions 组装当前已完成的全部业务切片；每个 Handler 仍只依赖自己的用例接口。
+func NewRouterWithInteractions(checker ReadinessChecker, readinessTimeout time.Duration, auth AuthApplication,
+	community CommunityApplication, posts PostsApplication, interactions InteractionsApplication, cursors *CursorCodec) http.Handler {
+	return newRouter(checker, readinessTimeout, auth, community, posts, interactions, cursors)
 }
 
 func newRouter(
@@ -46,6 +52,7 @@ func newRouter(
 	authApplication AuthApplication,
 	communityApplication CommunityApplication,
 	postsApplication PostsApplication,
+	interactionsApplication InteractionsApplication,
 	cursors *CursorCodec,
 ) http.Handler {
 	if readinessTimeout <= 0 {
@@ -61,6 +68,9 @@ func newRouter(
 	}
 	if postsApplication != nil {
 		registerPostRoutes(mux, authApplication, postsApplication, cursors)
+	}
+	if interactionsApplication != nil {
+		registerInteractionRoutes(mux, authApplication, interactionsApplication, cursors)
 	}
 	mux.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
 		WriteError(writer, request, http.StatusNotFound, "not_found", "资源不存在", nil)

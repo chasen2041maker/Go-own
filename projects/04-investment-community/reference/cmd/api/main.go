@@ -62,6 +62,11 @@ func main() {
 		slog.Error("create post service", "error", err)
 		os.Exit(1)
 	}
+	interactions, err := usecase.NewInteractionService(store)
+	if err != nil {
+		slog.Error("create interaction service", "error", err)
+		os.Exit(1)
+	}
 	cursors, err := httpapi.NewCursorCodec(config.JWTSecret, 24*time.Hour)
 	if err != nil {
 		slog.Error("create cursor codec", "error", err)
@@ -69,7 +74,7 @@ func main() {
 	}
 
 	// API 可以先启动，再由 /readyz 诚实反映数据库状态；迁移由独立命令执行。
-	router := httpapi.NewRouterWithCommunityAndPosts(database, config.ReadinessTimeout, auth, community, posts, cursors)
+	router := httpapi.NewRouterWithInteractions(database, config.ReadinessTimeout, auth, community, posts, interactions, cursors)
 	server := platform.NewHTTPServer(config, router)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
