@@ -56,6 +56,14 @@ type reportCursorBinding struct {
 	Limit      int
 }
 
+type auditCursorBinding struct {
+	ViewerID   int64
+	Action     domain.AuditAction
+	TargetType domain.ContentType
+	AdminID    int64
+	Limit      int
+}
+
 type cursorPayload struct {
 	Version    int    `json:"v"`
 	Kind       string `json:"k"`
@@ -71,6 +79,7 @@ type cursorPayload struct {
 	UnreadOnly bool   `json:"n,omitempty"`
 	Status     string `json:"r,omitempty"`
 	TargetType string `json:"y,omitempty"`
+	FilterID   int64  `json:"f,omitempty"`
 	ID         int64  `json:"i"`
 	ExpiresAt  int64  `json:"x"`
 }
@@ -199,6 +208,25 @@ func (codec *CursorCodec) DecodeReport(token string, binding reportCursorBinding
 		return domain.ReportCursor{}, errInvalidCursor
 	}
 	return domain.ReportCursor{CreatedAt: time.UnixMicro(payload.CreatedAt).UTC(), ID: payload.ID}, nil
+}
+
+func (codec *CursorCodec) EncodeAudit(binding auditCursorBinding, position domain.AuditCursor) (string, error) {
+	if binding.ViewerID <= 0 || binding.AdminID < 0 || binding.Limit < 1 || position.ID <= 0 || position.CreatedAt.IsZero() {
+		return "", errInvalidCursor
+	}
+	return codec.encode(cursorPayload{Version: cursorVersion, Kind: "audits", UserID: binding.ViewerID,
+		Status: string(binding.Action), TargetType: string(binding.TargetType), FilterID: binding.AdminID,
+		Limit: binding.Limit, CreatedAt: position.CreatedAt.UTC().UnixMicro(), ID: position.ID})
+}
+
+func (codec *CursorCodec) DecodeAudit(token string, binding auditCursorBinding) (domain.AuditCursor, error) {
+	payload, err := codec.decode(token)
+	if err != nil || payload.Kind != "audits" || payload.UserID != binding.ViewerID ||
+		payload.Status != string(binding.Action) || payload.TargetType != string(binding.TargetType) ||
+		payload.FilterID != binding.AdminID || payload.Limit != binding.Limit || payload.CreatedAt <= 0 || payload.ID <= 0 {
+		return domain.AuditCursor{}, errInvalidCursor
+	}
+	return domain.AuditCursor{CreatedAt: time.UnixMicro(payload.CreatedAt).UTC(), ID: payload.ID}, nil
 }
 
 func (codec *CursorCodec) encode(payload cursorPayload) (string, error) {

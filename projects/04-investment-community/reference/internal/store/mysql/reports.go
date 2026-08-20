@@ -168,44 +168,72 @@ ORDER BY r.created_at DESC,r.id DESC LIMIT ?`, dbStatus, dbStatus, query.TargetT
 	defer rows.Close()
 	items := make([]domain.AdminReport, 0)
 	for rows.Next() {
-		var item domain.AdminReport
-		var targetType, visibility, reason, status string
-		var title, excerpt sql.NullString
-		var action sql.NullString
-		var handlerID sql.NullInt64
-		var handlerName sql.NullString
-		var handledAt sql.NullTime
-		if err := rows.Scan(&item.ID, &item.Reporter.ID, &item.Reporter.DisplayName, &targetType, &item.Target.ID, &visibility, &item.Target.ModerationVersion, &item.Target.Deleted, &title, &excerpt, &reason, &item.Details, &status, &action, &handlerID, &handlerName, &item.CreatedAt, &handledAt); err != nil {
-			return nil, fmt.Errorf("scan admin report: %w", err)
+		item, err := scanAdminReport(rows)
+		if err != nil {
+			return nil, err
 		}
-		item.Target.TargetType = domain.ContentType(targetType)
-		item.Target.Visibility = domain.Visibility(visibility)
-		if title.Valid {
-			item.Target.Title = &title.String
-		}
-		if excerpt.Valid {
-			item.Target.Excerpt = &excerpt.String
-		}
-		item.Reason = domain.ReportReason(reason)
-		item.Status = externalReportStatus(status)
-		if action.Valid {
-			value := externalReportDecision(action.String)
-			item.Decision = &value
-		}
-		if handlerID.Valid {
-			item.DecidedBy = &domain.PublicUser{ID: handlerID.Int64, DisplayName: handlerName.String}
-		}
-		if handledAt.Valid {
-			value := handledAt.Time.UTC()
-			item.DecidedAt = &value
-		}
-		item.CreatedAt = item.CreatedAt.UTC()
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate admin reports: %w", err)
 	}
 	return items, nil
+}
+
+func (store *Store) findAdminReportByID(ctx context.Context, queryer postQueryer, reportID int64) (domain.AdminReport, error) {
+	row := queryer.QueryRowContext(ctx, `
+SELECT r.id,ru.id,ru.display_name,
+CASE WHEN r.post_id IS NOT NULL THEN 'post' ELSE 'comment' END,
+COALESCE(r.post_id,r.comment_id),COALESCE(p.visibility,c.visibility),COALESCE(p.moderation_version,c.moderation_version),
+CASE WHEN p.deleted_at IS NOT NULL OR c.deleted_at IS NOT NULL THEN TRUE ELSE FALSE END,
+p.title,CASE WHEN p.id IS NOT NULL THEN IF(p.deleted_at IS NULL,LEFT(p.body,500),NULL) ELSE IF(c.deleted_at IS NULL,LEFT(c.body,500),NULL) END,
+r.reason_code,r.details,r.status,r.resolution_action,hu.id,hu.display_name,r.created_at,r.handled_at
+FROM reports r JOIN users ru ON ru.id=r.reporter_id
+LEFT JOIN posts p ON p.id=r.post_id LEFT JOIN comments c ON c.id=r.comment_id LEFT JOIN users hu ON hu.id=r.handled_by
+WHERE r.id=?`, reportID)
+	item, err := scanAdminReport(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.AdminReport{}, domain.ErrReportNotFound
+	}
+	return item, err
+}
+
+type reportScanner interface{ Scan(...any) error }
+
+func scanAdminReport(scanner reportScanner) (domain.AdminReport, error) {
+	var item domain.AdminReport
+	var targetType, visibility, reason, status string
+	var title, excerpt sql.NullString
+	var action sql.NullString
+	var handlerID sql.NullInt64
+	var handlerName sql.NullString
+	var handledAt sql.NullTime
+	if err := scanner.Scan(&item.ID, &item.Reporter.ID, &item.Reporter.DisplayName, &targetType, &item.Target.ID, &visibility, &item.Target.ModerationVersion, &item.Target.Deleted, &title, &excerpt, &reason, &item.Details, &status, &action, &handlerID, &handlerName, &item.CreatedAt, &handledAt); err != nil {
+		return domain.AdminReport{}, fmt.Errorf("scan admin report: %w", err)
+	}
+	item.Target.TargetType = domain.ContentType(targetType)
+	item.Target.Visibility = domain.Visibility(visibility)
+	if title.Valid {
+		item.Target.Title = &title.String
+	}
+	if excerpt.Valid {
+		item.Target.Excerpt = &excerpt.String
+	}
+	item.Reason = domain.ReportReason(reason)
+	item.Status = externalReportStatus(status)
+	if action.Valid {
+		value := externalReportDecision(action.String)
+		item.Decision = &value
+	}
+	if handlerID.Valid {
+		item.DecidedBy = &domain.PublicUser{ID: handlerID.Int64, DisplayName: handlerName.String}
+	}
+	if handledAt.Valid {
+		value := handledAt.Time.UTC()
+		item.DecidedAt = &value
+	}
+	item.CreatedAt = item.CreatedAt.UTC()
+	return item, nil
 }
 
 func externalReportStatus(value string) domain.ReportStatus {
