@@ -49,6 +49,13 @@ type notificationCursorBinding struct {
 	Limit      int
 }
 
+type reportCursorBinding struct {
+	AdminID    int64
+	Status     domain.ReportStatus
+	TargetType domain.ContentType
+	Limit      int
+}
+
 type cursorPayload struct {
 	Version    int    `json:"v"`
 	Kind       string `json:"k"`
@@ -62,6 +69,8 @@ type cursorPayload struct {
 	PostID     int64  `json:"p,omitempty"`
 	UserID     int64  `json:"u,omitempty"`
 	UnreadOnly bool   `json:"n,omitempty"`
+	Status     string `json:"r,omitempty"`
+	TargetType string `json:"y,omitempty"`
 	ID         int64  `json:"i"`
 	ExpiresAt  int64  `json:"x"`
 }
@@ -171,6 +180,25 @@ func (codec *CursorCodec) DecodeNotification(token string, binding notificationC
 		return domain.NotificationCursor{}, errInvalidCursor
 	}
 	return domain.NotificationCursor{CreatedAt: time.UnixMicro(payload.CreatedAt).UTC(), ID: payload.ID}, nil
+}
+
+func (codec *CursorCodec) EncodeReport(binding reportCursorBinding, position domain.ReportCursor) (string, error) {
+	if binding.AdminID <= 0 || binding.Limit < 1 || position.ID <= 0 || position.CreatedAt.IsZero() {
+		return "", errInvalidCursor
+	}
+	return codec.encode(cursorPayload{Version: cursorVersion, Kind: "reports", UserID: binding.AdminID,
+		Status: string(binding.Status), TargetType: string(binding.TargetType), Limit: binding.Limit,
+		CreatedAt: position.CreatedAt.UTC().UnixMicro(), ID: position.ID})
+}
+
+func (codec *CursorCodec) DecodeReport(token string, binding reportCursorBinding) (domain.ReportCursor, error) {
+	payload, err := codec.decode(token)
+	if err != nil || payload.Kind != "reports" || payload.UserID != binding.AdminID ||
+		payload.Status != string(binding.Status) || payload.TargetType != string(binding.TargetType) ||
+		payload.Limit != binding.Limit || payload.CreatedAt <= 0 || payload.ID <= 0 {
+		return domain.ReportCursor{}, errInvalidCursor
+	}
+	return domain.ReportCursor{CreatedAt: time.UnixMicro(payload.CreatedAt).UTC(), ID: payload.ID}, nil
 }
 
 func (codec *CursorCodec) encode(payload cursorPayload) (string, error) {
