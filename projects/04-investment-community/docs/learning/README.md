@@ -61,16 +61,29 @@ go vet ./projects/04-investment-community/...
 go build ./projects/04-investment-community/reference/cmd/... ./projects/04-investment-community/starter/cmd/...
 ```
 
-上述命令都从仓库根目录运行。需要真实 MySQL 时，按 [项目 README](../../README.md) 启动 Compose，再回到仓库根执行集成命令。Compose 文件属于阶段 08 的产物；在它尚未创建时不能把前向说明当作已经可启动的证据。
+上述命令都从仓库根目录运行。需要真实 MySQL 时，先按 [项目 README](../../README.md) 启动 Compose MySQL，再用下方脚本创建独立的 `investment_community_test`；API 演示库 `investment_community` 不能用于会重置表的 integration。若你正在重做阶段 08，应先让黑盒测试因缺少环境正确失败，再补 Compose，不能把参考实现已有的运行结果冒充自己的 RED/GREEN 证据。
 
 ```powershell
+docker compose -f ./projects/04-investment-community/compose.yaml up -d mysql --wait
+$env:COMMUNITY_TEST_DSN = ./projects/04-investment-community/scripts/create-integration-schema.ps1
+$env:COMMUNITY_TEST_ALLOW_RESET = '1'
 $integration = go test -tags=integration ./projects/04-investment-community/reference/... -list '^Test'
 if (-not ($integration | Select-String '^Test')) { throw '没有发现 integration 测试' }
-go test -tags=integration ./projects/04-investment-community/reference/... -count=1
+$integrationOutput = go test -p=1 -tags=integration ./projects/04-investment-community/reference/... -count=1 -v
+$integrationOutput
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($integrationOutput | Select-String '^--- SKIP:') { throw 'integration 出现 SKIP' }
 
+$env:COMMUNITY_ADMIN_PASSWORD = 'LocalAdminPass!2026'
+docker compose -f ./projects/04-investment-community/compose.yaml up -d --build --wait
 $acceptance = go test -tags=acceptance ./projects/04-investment-community/acceptance -list '^Test'
 if (-not ($acceptance | Select-String '^Test')) { throw '没有发现 acceptance 测试' }
-go test -tags=acceptance ./projects/04-investment-community/acceptance -count=1
+$env:COMMUNITY_ACCEPTANCE_BASE_URL = 'http://127.0.0.1:8084'
+$env:COMMUNITY_ACCEPTANCE_ADMIN_PASSWORD = $env:COMMUNITY_ADMIN_PASSWORD
+$acceptanceOutput = go test -tags=acceptance ./projects/04-investment-community/acceptance -count=1 -v
+$acceptanceOutput
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($acceptanceOutput | Select-String '^--- SKIP:') { throw 'acceptance 出现 SKIP' }
 ```
 
 阶段文档给出的 `-run` 名称是建议的学习测试名；如果你使用不同命名，请保持测试表达的行为一致。Go 在 `-run` 零匹配时也可能以 0 退出，因此每次必须先用相同包、相同 build tag 和正则执行 `-list`，确认至少出现一个以 `Test` 开头的目标；零匹配绝不能作为完成证据。

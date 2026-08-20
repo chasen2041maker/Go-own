@@ -154,6 +154,7 @@ JWT 只承载最少身份信息，并严格校验允许的签名算法、发行�
 - `/healthz` 只表示进程能够响应，不访问数据库；
 - `/readyz` 用短超时 Ping 数据库，失败时返回未就绪；
 - HTTP Server 配置读取、Header、写入和空闲超时，并限制请求 Body；
+- API 响应统一设置 `no-store`、`nosniff` 与禁止框架嵌入的 CSP，避免认证数据被中间缓存或误作可执行内容；
 - 收到终止信号后停止接收新请求，在截止时间内完成已有请求并关闭连接池；
 - 密码只保存专用哈希结果，登录失败不泄露 email 是否存在；
 - 日志记录 Request ID、方法、路由、状态和耗时，不记录密码、Token、Authorization Header 或完整正文；
@@ -183,3 +184,7 @@ flowchart BT
 `reference` 和 `starter` 各自拥有 `cmd/` 与 `internal/`，Go 的 `internal` 可见性帮助阻止跨轨导入。`contracts/` 保存可共享的 OpenAPI 和黑盒场景；`docs/learning/` 说明实现顺序，但不泄漏必须照抄的内部代码。
 
 学习者可以采用不同的内部类型和函数名，只要依赖方向、外部契约、数据不变量、安全边界和验收结果一致。
+
+## 12. 可复现交付链
+
+`compose.yaml` 把运行依赖固定为 `MySQL healthy → migrate completed → seed completed → API ready → Swagger`。迁移和 Seed 是一次性容器，失败会阻止 API 接流量；Swagger 与 API 通过同一 Nginx 源访问 `/api/v1`，因此不需要为教学页面放宽 CORS。CI 使用同样的迁移、Seed 和环境变量契约，并以显式 build tag 隔离真实 MySQL 与进程外 HTTP 验收，使默认单元测试仍不依赖 Docker。

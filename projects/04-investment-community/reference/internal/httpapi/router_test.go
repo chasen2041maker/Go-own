@@ -119,7 +119,7 @@ func TestMeRejectsRequestWithoutAccessToken(t *testing.T) {
 	}
 }
 
-func TestRegisterAppliesStrictJSONBoundary(t *testing.T) {
+func TestStrictJSONContractMatrix(t *testing.T) {
 	router := NewRouter(nil, time.Second)
 	tests := []struct {
 		name        string

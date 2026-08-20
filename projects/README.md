@@ -35,7 +35,7 @@ go test ./projects/01-task-api
 
 读取并解析日志，完成统计报告；正确版本稳定后，再比较串行与并发处理的差异。
 
-### 4. 原创投资内容社区与治理系统（开发中）
+### 4. 原创投资内容社区与治理系统（实现完成；Docker 冷启动/CI 待验证）
 
 入口：[04-investment-community/README.md](04-investment-community/README.md)
 
@@ -44,6 +44,8 @@ go test ./projects/01-task-api
 ```powershell
 go test ./projects/04-investment-community/... -count=1
 go vet ./projects/04-investment-community/...
+$env:COMMUNITY_ADMIN_PASSWORD = 'LocalAdminPass!2026' # 自定义时 Compose 与脚本必须使用同一个值
+./projects/04-investment-community/scripts/demo.ps1 -AdminPassword $env:COMMUNITY_ADMIN_PASSWORD
 ```
 
 ## 仓库级验证
@@ -52,7 +54,9 @@ go vet ./projects/04-investment-community/...
 
 ```powershell
 go test ./...
-go vet ./...
+go vet ./projects/04-investment-community/...
 ```
+
+投资社区的本地 test/vet/build/integration/acceptance 已验证。全仓 vet 仍有与本项目无关的既有 `practice/07-functions/answers/exercise.go:70` 不可达代码基线；不要把它误报为投资社区失败。
 
 每个里程碑都要同步编写并运行本阶段测试，不把测试集中拖到项目最后。

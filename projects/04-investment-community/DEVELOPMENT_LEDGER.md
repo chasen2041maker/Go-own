@@ -2,7 +2,7 @@
 
 > 快照：2026-08-20（Asia/Taipei）
 >
-> 状态：已安全暂停；chunk-01～06 完成，chunk-07 保存为可编译、已通过核心 MySQL 测试的 WIP，chunk-08 未开始。
+> 状态：实现与本地可执行门禁完成；Docker 冷启动/CI 待具备 Docker daemon 权限或推送后的 Linux CI 验证。
 > 原创边界：只借鉴成熟社区的功能范围；Go 代码、接口、表、测试和虚构数据均独立设计，不复制公司源码、真实数据、密钥或品牌资产。
 
 ## 1. 唯一续接位置
@@ -10,10 +10,10 @@
 | 项目 | 当前值 |
 | --- | --- |
 | Git 仓库 | `C:\company\own\Go-own` |
-| 开发 worktree | `C:\Users\15234\.config\superpowers\worktrees\Go-own\stock-community-governance` |
+| 开发 worktree | `C:\Users\15234\.codex\visualizations\2026\08\19\01a0186e-78ea-7573-86a7-ef1dd016550d\stock-community-governance-3` |
 | 分支 | `codex/stock-community-governance` |
-| 完成态 HEAD | `421458e`（chunk-06） |
-| 当前 WIP | 续接时以 `git log -1 --oneline` 为准，提交说明含 `wip(chunk-07)` |
+| 完成态 HEAD | chunk-08 最终提交（以 `git log -1 --oneline` 为准） |
+| 当前 WIP | 无业务 WIP；仅保留 Docker 冷启动/CI 外部验证 |
 | 临时执行状态 | 根目录 `HANDOFF.md` |
 | 规格 | `docs/plans/spec-investment-community.md` |
 | 实施计划 | `docs/plans/2026-08-19-investment-community-implementation.md` |
@@ -31,45 +31,45 @@
 | 04 帖子 | `52c04cb` | `stock-v1/s04-done` | 帖子 CRUD、标签、创建幂等、筛选分页、乐观锁、软删除与举报收口 |
 | 05 评论与通知 | `1bfe56e` | `stock-v1/s05-done` | 评论/一级回复、幂等、评论/回复通知、已读、作者删除收口 |
 | 06 举报受理 | `421458e` | `stock-v1/s06-done` | 举报创建、查重、自举报拒绝、管理员举报队列 |
+| 07 治理闭环 | `bc20705` | `stock-v1/s07-done` | 目标优先锁序、隐藏/恢复、治理版本、通知、审计、并发与 ABA 防护 |
 
-文档、契约、八阶段教材及本总账的基线提交为 `d798a8b`。`stock-v1/starter` 暂指阶段一绿色提交，最终教学交付时再校正。
+文档、契约、八阶段教材及本总账的基线提交为 `d798a8b`。`stock-v1/starter` 永久保留为阶段一绿色历史快照，不再移动；主流程在最终 chunk-08 提交后创建新的不可变 `stock-v1/learner-start`，供学习者获得完整教材/契约和最小 starter 起点。
 
-## 3. chunk-07 当前 WIP（不得标记完成）
+## 3. chunk-08 当前交付
 
 已经写入：
 
-- `domain/audit.go`：审计动作、审计分页、治理冲突和恢复结果模型；
-- `usecase/governance.go`：管理员前置授权、决策/恢复输入校验、审计分页；
-- `httpapi/governance.go`：决策、恢复、审计 Handler 及稳定错误映射；
-- `store/mysql/governance.go`：目标优先锁序、ignore/hide、同目标举报收口、治理通知、同事务审计、恢复 CAS/ABA、有界 1213/1205 整事务重试；
-- 单元、HTTP 和真实 MySQL 集成测试。
+- `acceptance/api_test.go`：带 `acceptance` build tag、只走 HTTP 的完整治理旅程；
+- `delivery_contract_test.go`：OpenAPI 恰好 21 个操作及路由字面量、starter 隔离门禁；
+- `Dockerfile`、`compose.yaml`、`swagger-nginx.conf`：MySQL → migrate → seed → API → Swagger；
+- `scripts/demo.ps1` 与 `scripts/create-integration-schema.ps1`：黑盒演示及独立测试 schema 创建；
+- `.github/workflows/investment-community.yml`：默认门禁、真实 MySQL、HTTP acceptance 与 Linux Compose 冷构建；
+- 非 root 容器、回环端口、构建秘密排除、API 安全响应头、结构化脱敏访问日志；
+- 确定性 Repo Wiki 文档目录/路由页，以及项目、学习路线、根入口与规格状态同步。
 
-已验证：
+本轮新鲜验证：
 
 ```powershell
-go test ./projects/04-investment-community/reference/... -count=1
-
-$env:COMMUNITY_TEST_DSN='<本机临时测试 DSN>'
-go test -tags=integration ./projects/04-investment-community/reference/internal/store/mysql `
-  -run 'Test(ConcurrentDecision|AuditInsertFailure|GovernanceRetry)' -count=1
+go test ./... -count=1
+go vet ./projects/04-investment-community/...
+go build ./projects/04-investment-community/reference/cmd/... ./projects/04-investment-community/starter/cmd/...
+docker compose -f projects/04-investment-community/compose.yaml config
+go test -p=1 -tags=integration ./projects/04-investment-community/reference/... -count=1 -v
+go test -tags=acceptance ./projects/04-investment-community/acceptance -count=1 -v
+python $wikiScript inventory --root .
+python $wikiScript generate --root . --check
+python $wikiScript check --root .
 ```
 
-两条命令均通过。真实 MySQL 覆盖：两个管理员不同决策只有一个改变状态、审计插入失败完整回滚、相同 hide/restore 重试不重复通知与审计、旧 restore 被后续 hide 的治理版本阻止。
+上述命令均通过；integration 使用独立 `investment_community_test` 且无 SKIP。acceptance 使用演示库与独立 API 端口，显式调用全部 21 个 operationId，并覆盖注册、入圈、发帖/更新、评论/回复通知、举报、隐藏、审计、恢复及删除。Docker 镜像实际构建未作为成功证据：当前沙箱拒绝 Docker 命名管道/Buildx 锁访问；Compose 展开已通过，工作流会在 Linux 冷构建后检查 Swagger 镜像非 root、API/Swagger/OpenAPI 和完整 HTTP 旅程。
 
-仍缺：
-
-1. 把 `GovernanceApplication` 接入 `router.go` 的完整构造器；
-2. 在 `cmd/api/main.go` 创建 `GovernanceService` 并注入；
-3. 补审计游标签名绑定与治理错误响应的专门回归测试；
-4. 跑真实 HTTP+MySQL 三条管理员接口；
-5. 跑项目 test/vet/build、OpenAPI/验收覆盖、文档影响检查和独立复审；
-6. 复审通过后提交完成态并打 `stock-v1/s07-done`。当前 WIP 不能打完成 Tag。
+本分支最终提交后创建 `stock-v1/s08-done` 与 `stock-v1/learner-start` 两个不可变 Tag。剩余外部证据只有 Docker 冷启动与 GitHub CI；必须在可访问 Docker daemon 的环境复验，不能用静态配置成功替代。
 
 ## 4. 下一步严格顺序
 
-1. 从上述 6 个缺口续完 chunk-07；不得重写已经通过的事务核心。
-2. chunk-08：Docker Compose、Dockerfile、Swagger UI、黑盒 acceptance、CI、演示脚本和教学入口收口。
-3. 全量验证与最终复审；更新总账，删除临时 `HANDOFF.md`，运行 Repo Wiki 门禁。
+1. 把本轮生成的 Git bundle 导入原仓库，使原 `codex/stock-community-governance` 快进到最终提交；
+2. 在具备 Docker daemon 权限的环境执行 `docker compose up -d --build --wait`、Swagger/API 探测和 acceptance；
+3. 推送或手动触发 GitHub Actions，确认 default、mysql-and-acceptance、compose-cold-start 三个 job；
 4. 未经用户要求，不推送、不合并 `main`、不删除 MySQL 测试数据。
 
 ## 5. 已知环境与基线
@@ -80,4 +80,4 @@ go test -tags=integration ./projects/04-investment-community/reference/internal/
 
 ## 6. 续接提示词
 
-> 在 `C:\Users\15234\.config\superpowers\worktrees\Go-own\stock-community-governance` 的 `codex/stock-community-governance` 分支继续原创 Go 投资内容社区。先读 `projects/04-investment-community/DEVELOPMENT_LEDGER.md` 和根 `HANDOFF.md`。chunk-01～06 已完成；chunk-07 已保存为通过默认 reference 测试和三项真实 MySQL 治理测试的 WIP，但尚未接入 router/main，也未完成 HTTP 实测、全量验证、复审和 Tag。严格从总账列出的 6 个缺口继续，保持 TDD、中文 why 注释和原创边界。
+> 导入最终 Git bundle 后，在 `codex/stock-community-governance` 继续。chunk-01～08 的实现、复审与本地非 Docker 门禁已完成；只需在有 Docker daemon 权限的环境补跑冷构建/Swagger/acceptance，并确认 GitHub Actions。未经用户要求不要推送或合并。

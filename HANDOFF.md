@@ -5,19 +5,19 @@ plan_file: docs/plans/2026-08-19-investment-community-implementation.md
 analysis_file: docs/plans/2026-08-19-investment-community-implementation.chunked-analysis.md
 started: 2026-08-19T14:00:00+08:00
 last_updated: 2026-08-20T00:00:00+08:00
-status: IN_PROGRESS
+status: PAUSED
 
 ## Execution State
 
-current_step: 7
+current_step: 8
 total_steps: 8
-next_chunk: chunk-08
+next_chunk: EXTERNAL_DOCKER_GATE
 chunk_timeout_minutes: 20
 
 ## Plan Health
 
 consecutive_failures: 0
-total_escalations: 0
+total_escalations: 1
 plan_drift_triggered: false
 
 ## Chunks
@@ -31,7 +31,7 @@ plan_drift_triggered: false
 | 5 | chunk-05 | 评论、回复与通知 | general-go/db | COMPLEX | APPROVED | chunk-04 | 1bfe56e | 0 |
 | 6 | chunk-06 | 举报受理 | general-go/db | MODERATE | APPROVED | chunk-05 | 421458e | 0 |
 | 7 | chunk-07 | 治理、恢复与审计 | general-go/db | COMPLEX | APPROVED | chunk-06 | 本次 chunk-07 完成提交 | 2 |
-| 8 | chunk-08 | 工程化与教学交付 | docs/contracts/ci | COMPLEX | PENDING | chunk-07 | - | 0 |
+| 8 | chunk-08 | 工程化与教学交付 | docs/contracts/ci | COMPLEX | APPROVED | chunk-07 | 本次 chunk-08 完成提交 | 4 |
 
 ## Dependency Graph
 
@@ -39,11 +39,11 @@ plan_drift_triggered: false
 
 ## Current Chunk Context
 
-chunk-07 已完成路由/main 装配、真实 HTTP+MySQL hide→audit→restore、统一目标优先锁序、并发相同/不同决策、事务快照和 ABA 测试，并通过规格与质量复审。下一步执行 chunk-08 工程化和教学交付。
+chunk-01～08 的代码、规格/质量/文档复审及本地可执行门禁已完成。真实 MySQL integration 使用独立 schema 且无 SKIP；纯 HTTP acceptance 调用全部 21 个操作。当前沙箱无 Docker daemon 权限，只剩冷构建/Swagger 与 GitHub CI 外部证据。
 
 ## Escalations
 
-None.
+- chunk-08：三次自动修复后曾升级；人工收口完成，最终规格、质量和文档复审均 PASS。
 
 ## Commands
 

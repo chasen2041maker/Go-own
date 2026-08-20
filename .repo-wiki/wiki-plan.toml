@@ -2,6 +2,8 @@
 version = 1
 language = "zh-CN"
 portal = "docs/README.md"
+generated_dir = "docs/wiki"
+generated_pages = ["document-catalog", "context-routes"]
 max_context_documents = 4
 
 [scope]
@@ -196,6 +198,22 @@ title = "阶段 08：工程化交付"
 role = "reference"
 goal = "指导 Docker、CI、OpenAPI、验收和展示收口"
 tags = ["learning", "stage-08"]
+
+[[documents]]
+id = "generated-document-catalog"
+path = "docs/wiki/document-catalog.md"
+title = "文档目录（自动生成）"
+role = "reference"
+goal = "确定性列出仓库文档登记及职责"
+tags = ["generated", "docs"]
+
+[[documents]]
+id = "generated-context-routes"
+path = "docs/wiki/context-routes.md"
+title = "上下文路由（自动生成）"
+role = "reference"
+goal = "确定性列出任务上下文与文档门禁路由"
+tags = ["generated", "routing"]
 
 [[routes]]
 id = "project-structure"

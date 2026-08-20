@@ -18,7 +18,7 @@
 
 评审者在干净环境按项目 README 启动 Compose、执行迁移和 Seed，从 Swagger 完成“注册→登录→GET /me→入圈→发帖→评论/回复→查看通知→举报→管理员隐藏→查看审计→恢复”。CI 同时证明默认测试不依赖 Docker、真实 MySQL 行为正确、外部契约没有漂移。
 
-项目 README 与 Compose 是本阶段要生成并验证的交付物；前面阶段提到它们只是前向引用。在文件尚未存在、命令尚未实跑前，不能声称环境已经可复现。
+参考轨实现完成，本地 test/vet/build/integration/acceptance 已验证；Docker 冷启动/CI 待可用环境验证。你在 starter 学习分支重做本阶段时，仍必须先写验收测试并观察正确 RED，再实现自己的编排；不能用参考轨已有文件代替自己的验证证据。
 
 ## 3. 调用链
 
@@ -79,12 +79,27 @@ CI 先跑格式、默认测试、vet 和 build；MySQL 服务就绪后再跑 `in
 go test ./... -count=1
 go vet ./projects/04-investment-community/...
 go build ./projects/04-investment-community/reference/cmd/... ./projects/04-investment-community/starter/cmd/...
+# integration 使用独立 schema；先启动 MySQL，但不要复用 API 的 investment_community。
+docker compose -f ./projects/04-investment-community/compose.yaml up -d mysql --wait
+$env:COMMUNITY_TEST_DSN = ./projects/04-investment-community/scripts/create-integration-schema.ps1
+$env:COMMUNITY_TEST_ALLOW_RESET = '1'
 $integration = go test -tags=integration ./projects/04-investment-community/reference/... -list '^Test'
 if (-not ($integration | Select-String '^Test')) { throw '没有发现 integration 测试' }
-go test -tags=integration ./projects/04-investment-community/reference/... -count=1
+$integrationOutput = go test -p=1 -tags=integration ./projects/04-investment-community/reference/... -count=1 -v
+$integrationOutput
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($integrationOutput | Select-String '^--- SKIP:') { throw 'integration 出现 SKIP' }
+
+$env:COMMUNITY_ADMIN_PASSWORD = 'LocalAdminPass!2026'
+docker compose -f ./projects/04-investment-community/compose.yaml up -d --build --wait
+$env:COMMUNITY_ACCEPTANCE_BASE_URL = 'http://127.0.0.1:8084'
+$env:COMMUNITY_ACCEPTANCE_ADMIN_PASSWORD = $env:COMMUNITY_ADMIN_PASSWORD
 $acceptance = go test -tags=acceptance ./projects/04-investment-community/acceptance -list '^Test'
 if (-not ($acceptance | Select-String '^Test')) { throw '没有发现 acceptance 测试' }
-go test -tags=acceptance ./projects/04-investment-community/acceptance -count=1
+$acceptanceOutput = go test -tags=acceptance ./projects/04-investment-community/acceptance -count=1 -v
+$acceptanceOutput
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($acceptanceOutput | Select-String '^--- SKIP:') { throw 'acceptance 出现 SKIP' }
 $wikiScript = Join-Path $env:USERPROFILE '.codex/skills/maintain-repo-wiki/scripts/repo_wiki.py'
 python $wikiScript check --root .
 ```

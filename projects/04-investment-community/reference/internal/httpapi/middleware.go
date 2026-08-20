@@ -20,6 +20,65 @@ type requestIDContextKey struct{}
 
 var fallbackRequestIDCounter atomic.Uint64
 
+// SecurityHeaders 把 API 响应声明为不可缓存、不可嗅探的纯数据。
+// 即使未来前端误把响应嵌入页面，这组默认值也不会让 JSON 获得脚本或框架执行上下文。
+func SecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("X-Content-Type-Options", "nosniff")
+		writer.Header().Set("Cache-Control", "no-store")
+		writer.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+		next.ServeHTTP(writer, request)
+	})
+}
+
+// AccessLog 只记录排障所需的请求元数据；query、Header 和 body 从未进入日志参数，
+// 因而即使调用者把 Token 或内容放错位置，也不会被访问日志二次扩散。
+func AccessLog(logger *slog.Logger, next http.Handler) http.Handler {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		started := time.Now()
+		tracked := &statusResponseWriter{ResponseWriter: writer, status: http.StatusOK}
+		next.ServeHTTP(tracked, request)
+		route := request.Pattern
+		if route == "" {
+			route = request.URL.Path
+		}
+		logger.Info("HTTP request completed",
+			"request_id", RequestIDFromContext(request.Context()),
+			"method", request.Method,
+			"route", route,
+			"status", tracked.status,
+			"duration_ms", time.Since(started).Milliseconds(),
+		)
+	})
+}
+
+type statusResponseWriter struct {
+	http.ResponseWriter
+	status      int
+	wroteHeader bool
+}
+
+func (writer *statusResponseWriter) WriteHeader(status int) {
+	if writer.wroteHeader {
+		return
+	}
+	writer.status = status
+	writer.wroteHeader = true
+	writer.ResponseWriter.WriteHeader(status)
+}
+
+func (writer *statusResponseWriter) Write(contents []byte) (int, error) {
+	if !writer.wroteHeader {
+		writer.WriteHeader(http.StatusOK)
+	}
+	return writer.ResponseWriter.Write(contents)
+}
+
+func (writer *statusResponseWriter) Unwrap() http.ResponseWriter { return writer.ResponseWriter }
+
 // WithRequestID 只接受能完整写入审计表的安全上游标识，否则生成新值。
 // 这里统一限制长度，避免治理事务最后写审计时才因字段溢出而整体回滚。
 func WithRequestID(next http.Handler) http.Handler {

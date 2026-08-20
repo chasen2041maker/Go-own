@@ -1,0 +1,86 @@
+name: investment-community
+
+x-runtime-environment: &runtime-environment
+  DATABASE_DSN: "community:${COMMUNITY_MYSQL_PASSWORD:-community_local_only}@tcp(mysql:3306)/investment_community?parseTime=true&loc=UTC"
+  JWT_SECRET: "${COMMUNITY_JWT_SECRET:-local-development-jwt-secret-change-me}"
+  JWT_ISSUER: investment-community
+  JWT_AUDIENCE: investment-community-api
+
+services:
+  mysql:
+    image: mysql:8.0.46
+    environment:
+      MYSQL_DATABASE: investment_community
+      MYSQL_USER: community
+      MYSQL_PASSWORD: "${COMMUNITY_MYSQL_PASSWORD:-community_local_only}"
+      MYSQL_ROOT_PASSWORD: "${COMMUNITY_MYSQL_ROOT_PASSWORD:-root_local_only}"
+    ports:
+      - "127.0.0.1:${COMMUNITY_MYSQL_PORT:-13385}:3306"
+    volumes:
+      - community-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: projects/04-investment-community/Dockerfile
+      target: api-runtime
+    entrypoint: ["/app/migrate"]
+    environment: *runtime-environment
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
+  seed:
+    build:
+      context: ../..
+      dockerfile: projects/04-investment-community/Dockerfile
+      target: api-runtime
+    entrypoint: ["/app/seed"]
+    environment:
+      <<: *runtime-environment
+      SEED_CONFIRM: fictional-development-data
+      SEED_ADMIN_PASSWORD: "${COMMUNITY_ADMIN_PASSWORD:-LocalAdminPass!2026}"
+      SEED_USER_PASSWORD: "${COMMUNITY_USER_PASSWORD:-LocalUserPass!2026}"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  api:
+    build:
+      context: ../..
+      dockerfile: projects/04-investment-community/Dockerfile
+      target: api-runtime
+    environment:
+      <<: *runtime-environment
+      HTTP_ADDR: 0.0.0.0:8084
+    ports:
+      - "127.0.0.1:${COMMUNITY_API_PORT:-8084}:8084"
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8084/readyz"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  swagger:
+    build:
+      context: ../..
+      dockerfile: projects/04-investment-community/Dockerfile
+      target: swagger
+    ports:
+      - "127.0.0.1:${COMMUNITY_SWAGGER_PORT:-8085}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  community-mysql:

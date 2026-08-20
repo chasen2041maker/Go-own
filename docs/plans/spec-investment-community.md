@@ -2,7 +2,7 @@
 title: '原创投资内容社区与治理系统'
 type: 'feature'
 created: '2026-08-19'
-status: 'in-progress'
+status: 'implemented'
 review_loop_iteration: 0
 baseline_commit: '45d8a53500d049eb14d3f39cf4fc4c923c2ef96b'
 context:
@@ -10,6 +10,8 @@ context:
   - '{project-root}/projects/README.md'
   - '{project-root}/docs/plans/2026-08-19-investment-community-design.md'
 ---
+
+> 当前证据：实现完成，本地 test/vet/build/integration/acceptance 已验证；Docker 冷启动/CI 待可用环境验证。
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -52,14 +54,14 @@ context:
 
 **Execution:**
 
-- [ ] 建立双轨骨架、配置、日志、统一错误、健康/就绪、迁移运行器和 MySQL Compose。
-- [ ] 以 TDD 实现注册、登录、JWT、`user/admin` RBAC 和当前用户。
-- [ ] 以 TDD 实现静态证券目录、公开圈子、成员关系、帖子与稳定分页。
-- [ ] 以 TDD 实现评论、一级回复、软删除、通知和全部已读。
-- [ ] 以 TDD 实现举报、治理状态机、隐藏/恢复、审计和并发冲突。
-- [ ] 完成 OpenAPI、Seed、Swagger、黑盒演示、CI、集成测试和安全/生命周期收口。
-- [ ] 完成原创说明、架构/数据/治理文档及八阶段中文学习路线。
-- [ ] 更新仓库入口和 Repo Wiki，保留既有项目行为与文档历史。
+- [x] 建立双轨骨架、配置、日志、统一错误、健康/就绪、迁移运行器和 MySQL Compose。
+- [x] 以 TDD 实现注册、登录、JWT、`user/admin` RBAC 和当前用户。
+- [x] 以 TDD 实现静态证券目录、公开圈子、成员关系、帖子与稳定分页。
+- [x] 以 TDD 实现评论、一级回复、软删除、通知和全部已读。
+- [x] 以 TDD 实现举报、治理状态机、隐藏/恢复、审计和并发冲突。
+- [x] 完成 OpenAPI、Seed、Swagger、黑盒演示、CI、集成测试和安全/生命周期收口。
+- [x] 完成原创说明、架构/数据/治理文档及八阶段中文学习路线。
+- [x] 更新仓库入口和 Repo Wiki，保留既有项目行为与文档历史。
 
 **Acceptance Criteria:**
 

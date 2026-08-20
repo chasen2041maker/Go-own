@@ -97,7 +97,9 @@ func newRouter(
 		WriteError(writer, request, http.StatusNotFound, "not_found", "资源不存在", nil)
 	})
 
-	return WithRequestID(Recover(slog.Default(), mux))
+	logger := slog.Default()
+	// Recover 必须位于 AccessLog 内侧：panic 先被转成最终 500，访问日志才能记录真实状态。
+	return SecurityHeaders(WithRequestID(AccessLog(logger, Recover(logger, mux))))
 }
 
 func healthz(writer http.ResponseWriter, _ *http.Request) {

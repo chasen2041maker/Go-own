@@ -9,7 +9,7 @@
 | [Task API](projects/01-task-api/README.md) | 进行中 | HTTP、JSON、错误处理、测试、并发安全、文件持久化 |
 | [并发网址检测器](projects/02-url-checker/README.md) | 待开始 | goroutine、channel、Worker Pool、Context、超时 |
 | [日志分析器](projects/03-log-analyzer/README.md) | 待开始 | 文件读取、解析、统计、并发处理、基准测试 |
-| [原创投资内容社区](projects/04-investment-community/README.md) | 开发中 | MySQL、JWT、分层、事务、幂等、治理、审计、集成测试 |
+| [原创投资内容社区](projects/04-investment-community/README.md) | 实现完成；Docker 冷启动/CI 待验证 | MySQL、JWT、分层、事务、幂等、治理、审计、集成与黑盒验收 |
 
 详细顺序和统一命令见 [projects/README.md](projects/README.md)。
 
@@ -41,8 +41,10 @@ Invoke-RestMethod http://127.0.0.1:8080/health
 
 ```powershell
 go test ./...
-go vet ./...
+go vet ./projects/04-investment-community/...
 ```
+
+投资社区的本地 test/vet/build/integration/acceptance 已验证；Docker 冷启动与 CI 仍待具备 Docker Buildx 权限的环境验证。全仓 `go vet ./...` 另有既有练习基线失败：`practice/07-functions/answers/exercise.go:70` 不可达代码，因此高级项目使用上面的项目范围 vet 作为门禁。
 
 ## 学习方式
 

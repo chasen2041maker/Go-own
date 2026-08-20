@@ -1,0 +1,114 @@
+name: investment-community
+
+on:
+  push:
+    paths:
+      - "projects/04-investment-community/**"
+      - ".github/workflows/investment-community.yml"
+      - "go.mod"
+      - "go.sum"
+  pull_request:
+    paths:
+      - "projects/04-investment-community/**"
+      - ".github/workflows/investment-community.yml"
+      - "go.mod"
+      - "go.sum"
+
+permissions:
+  contents: read
+
+jobs:
+  default:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+      - run: test -z "$(gofmt -l projects/04-investment-community)"
+      - run: go test ./projects/04-investment-community/... -count=1
+      - run: go vet ./projects/04-investment-community/...
+      - run: go build ./projects/04-investment-community/reference/cmd/... ./projects/04-investment-community/starter/cmd/...
+
+  mysql-and-acceptance:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0.46
+        env:
+          MYSQL_DATABASE: investment_community_test
+          MYSQL_ROOT_PASSWORD: ci-local-only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-local-only --silent"
+          --health-interval=2s --health-timeout=3s --health-retries=30
+    env:
+      DATABASE_DSN: "root:ci-local-only@tcp(127.0.0.1:3306)/investment_community_test?parseTime=true&loc=UTC"
+      COMMUNITY_TEST_DSN: "root:ci-local-only@tcp(127.0.0.1:3306)/investment_community_test?parseTime=true&loc=UTC"
+      COMMUNITY_TEST_ALLOW_RESET: "1"
+      JWT_SECRET: "ci-only-jwt-secret-with-at-least-32-bytes"
+      JWT_ISSUER: investment-community
+      JWT_AUDIENCE: investment-community-api
+      HTTP_ADDR: 127.0.0.1:8084
+      SEED_CONFIRM: fictional-development-data
+      SEED_ADMIN_PASSWORD: LocalAdminPass!2026
+      SEED_USER_PASSWORD: LocalUserPass!2026
+      COMMUNITY_ACCEPTANCE_BASE_URL: http://127.0.0.1:8084
+      COMMUNITY_ACCEPTANCE_ADMIN_PASSWORD: LocalAdminPass!2026
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+      - name: Verify tagged tests are discovered
+        shell: bash
+        run: |
+          go test -tags=integration ./projects/04-investment-community/reference/... -list '^Test' | tee /tmp/integration-tests
+          grep '^Test' /tmp/integration-tests
+          go test -tags=acceptance ./projects/04-investment-community/acceptance -list '^Test' | tee /tmp/acceptance-tests
+          grep '^Test' /tmp/acceptance-tests
+      - run: go test -p=1 -tags=integration ./projects/04-investment-community/reference/... -count=1
+      - run: go run ./projects/04-investment-community/reference/cmd/migrate
+      - run: go run ./projects/04-investment-community/reference/cmd/seed
+      - name: Start API and wait for readiness
+        shell: bash
+        run: |
+          go run ./projects/04-investment-community/reference/cmd/api >/tmp/investment-community-api.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:8084/readyz && exit 0
+            sleep 1
+          done
+          cat /tmp/investment-community-api.log
+          exit 1
+      - run: go test -tags=acceptance ./projects/04-investment-community/acceptance -count=1 -v
+
+  compose-cold-start:
+    runs-on: ubuntu-latest
+    env:
+      COMMUNITY_ACCEPTANCE_BASE_URL: http://127.0.0.1:8084
+      COMMUNITY_ACCEPTANCE_ADMIN_PASSWORD: LocalAdminPass!2026
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+      - name: Cold build and start the complete stack
+        run: docker compose -f projects/04-investment-community/compose.yaml up -d --build --wait
+      - name: Probe API and Swagger contract
+        shell: bash
+        run: |
+          swagger_image="$(docker compose -f projects/04-investment-community/compose.yaml images -q swagger)"
+          swagger_user="$(docker image inspect --format '{{.Config.User}}' "$swagger_image")"
+          test -n "$swagger_user" && test "$swagger_user" != "0" && test "$swagger_user" != "root"
+          curl --fail --silent http://127.0.0.1:8084/readyz
+          curl --fail --silent http://127.0.0.1:8085/ >/dev/null
+          curl --fail --silent http://127.0.0.1:8085/openapi.yaml | grep '^openapi: 3.1.0'
+      - name: Run the HTTP-only journey against Compose
+        run: go test -tags=acceptance ./projects/04-investment-community/acceptance -count=1 -v
+      - name: Tear down the disposable stack
+        if: always()
+        run: docker compose -f projects/04-investment-community/compose.yaml down -v --remove-orphans

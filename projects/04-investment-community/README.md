@@ -4,7 +4,7 @@
 
 本项目只借鉴内容社区普遍具有的**功能类别**，不模仿或改写任何公司、客户或商业产品的源码、目录、命名、接口、数据库、数据、密钥和品牌资产。证券、账户、圈子与帖子示例必须完全虚构；项目不接真实行情、不提供交易能力，也不构成投资建议。详细边界见[原创性声明](docs/originality.md)。
 
-> **当前状态**：项目正在按八个阶段开发。`starter` 已提供 `/healthz` 重写起点；`reference` 已完成并验证工程地基、真实 MySQL Migration、注册/登录/`/me`、虚构证券目录、公开圈子与加入/退出成员状态。`contracts/openapi.yaml` 描述的是最终 V1 的 21 个业务操作，尚未实现的帖子、互动与治理路由不能视为可用。Docker Compose、Swagger 和 HTTP acceptance 属于阶段 08；对应文件与测试实际交付前，本文不会把它们写成当前可用能力。
+> **当前状态**：实现完成，本地 test/vet/build/integration/acceptance 已验证；Docker 冷启动/CI 待可用环境验证。`starter` 仍只保留 `/healthz` 起点，供学习者按八阶段亲手重写；它不会导入 `reference`。
 
 跨对话续接以 [开发总账](DEVELOPMENT_LEDGER.md) 为准；总账明确区分已提交完成、未提交资产和正在开发的半成品。
 
@@ -15,8 +15,8 @@ contracts/       reference 与 starter 共同遵守的外部契约
 docs/            架构、数据、治理、原创边界与中文学习路线
 reference/       独立开发的参考实现；用于核对约束，不是复制模板
 starter/         留给学习者亲手实现的工作区，默认测试始终应为绿色
-acceptance/      阶段 08 才交付的纯 HTTP 黑盒验收（当前尚不可用）
-compose.yaml     阶段 08 才交付的本地编排文件（当前尚不可用）
+acceptance/      带 acceptance build tag 的纯 HTTP 黑盒验收
+compose.yaml     MySQL → migrate → seed → API → Swagger 的本地编排
 ```
 
 `reference` 与 `starter` 不互相导入业务代码，只共享 [OpenAPI](contracts/openapi.yaml) 和[验收场景](contracts/acceptance-scenarios.md)。推荐这样使用：
@@ -29,9 +29,19 @@ compose.yaml     阶段 08 才交付的本地编排文件（当前尚不可用�
 
 如果 `starter` 必须导入 `reference/internal/...` 才能工作，说明学习隔离已经被破坏。
 
-## 最终 V1 目标（不是当前完成清单）
+### 不可变学习起点
 
-完成八个阶段后，V1 将覆盖：注册、登录、可信 JWT 身份、静态虚构证券目录、公开圈子与成员关系、带 1～5 个证券标签的帖子、一级回复、站内通知、用户举报、管理员忽略/隐藏/恢复，以及不可缺失的操作审计。
+最终交付使用不可移动的 `stock-v1/learner-start` Tag 作为学习起点。它包含完整契约、教材和参考轨，同时 `starter/` 仍只有可运行健康检查骨架；学习分支从这里创建：
+
+```powershell
+git switch -c learn-investment-community stock-v1/learner-start
+```
+
+历史 Tag `stock-v1/starter` 只表示阶段 01 当时的绿色快照，保留用于追溯，不能移动或复用为最终学习入口。`stock-v1/learner-start` 由最终交付流程在代码提交后创建；若本地尚不存在，应先完成最终提交/Tag 步骤，不能自行把它指向半成品。
+
+## V1 已交付能力
+
+V1 覆盖：注册、登录、可信 JWT 身份、静态虚构证券目录、公开圈子与成员关系、带 1～5 个证券标签的帖子、一级回复、站内通知、用户举报、管理员忽略/隐藏/恢复，以及不可缺失的操作审计。
 
 核心工程约束包括：身份只来自已验证 JWT，角色重新从数据库读取；帖子与标签、回复与通知、治理与审计分别保持事务原子性；作者软删除与管理员隐藏使用两条独立状态轴；列表以 `(created_at, id)` 稳定分页；MySQL 唯一键、外键、CHECK、事务和行锁由真实 MySQL 集成测试验证。
 
@@ -158,40 +168,58 @@ Seed 失败会整体回滚；不要把上述确认值配置到生产部署，也
 | `COMMUNITY_TEST_ALLOW_RESET` | 非 `1` | 只有你确认测试库可被重置后才显式设为 `1` |
 
 ```powershell
-$env:COMMUNITY_TEST_DSN = '<dedicated-disposable-test-schema-dsn>'
+# 先启动 Compose MySQL；脚本会另建 investment_community_test，不会重置 API 的 investment_community。
+docker compose -f ./projects/04-investment-community/compose.yaml up -d mysql --wait
+$env:COMMUNITY_TEST_DSN = ./projects/04-investment-community/scripts/create-integration-schema.ps1
 $env:COMMUNITY_TEST_ALLOW_RESET = '1'
 
 $integration = go test -tags=integration ./projects/04-investment-community/reference/... -list '^Test'
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if (-not ($integration | Select-String '^Test')) { throw '没有发现 integration 测试' }
-go test -tags=integration ./projects/04-investment-community/reference/... -count=1 -v
+$integrationOutput = go test -p=1 -tags=integration ./projects/04-investment-community/reference/... -count=1 -v
+$integrationOutput
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($integrationOutput | Select-String '^--- SKIP:') { throw 'integration 出现 SKIP，不能作为真实 MySQL 证据' }
 ```
 
-检查输出没有 `SKIP`，才能把本次运行当作真实 MySQL 证据。当前命令只覆盖已经存在的 integration 测试；最终的约束、事务、游标和治理并发矩阵要等对应阶段实现并有测试后才算完成。
+检查输出没有 `SKIP`，才能把本次运行当作真实 MySQL 证据。`-p=1` 避免多个会重置同一专用 schema 的测试包并行互相破坏。
 
-## 阶段 08 完成后才可用的最终命令
+## 一键启动、Swagger 与黑盒演示
 
-> **现在不可作为可运行指令或完成证据。** 只有 `compose.yaml`、`reference/cmd/seed` 和 `acceptance/` 实际存在，并且下面命令获得新鲜成功输出后，才能使用本节。
+Compose 内的密码和 JWT 默认值只用于本机虚构演示；共享环境应通过 `COMMUNITY_*` 环境变量覆盖。首次启动会依次等待 MySQL、执行迁移、写入幂等 Seed、启动 API，最后开放 Swagger。
 
 ```powershell
-docker compose -f ./projects/04-investment-community/compose.yaml up -d --build
-go run ./projects/04-investment-community/reference/cmd/migrate
-go run ./projects/04-investment-community/reference/cmd/seed
+$env:COMMUNITY_ADMIN_PASSWORD = 'LocalAdminPass!2026' # 或你自己的本地覆盖值
+docker compose -f ./projects/04-investment-community/compose.yaml up -d --build --wait
+
+# Swagger: http://127.0.0.1:8085
+# API:     http://127.0.0.1:8084
+./projects/04-investment-community/scripts/demo.ps1 -SkipCompose -AdminPassword $env:COMMUNITY_ADMIN_PASSWORD
 
 go test ./... -count=1
 go vet ./projects/04-investment-community/...
 go build ./projects/04-investment-community/reference/cmd/... ./projects/04-investment-community/starter/cmd/...
 
+$env:COMMUNITY_TEST_DSN = ./projects/04-investment-community/scripts/create-integration-schema.ps1
+$env:COMMUNITY_TEST_ALLOW_RESET = '1'
 $integration = go test -tags=integration ./projects/04-investment-community/reference/... -list '^Test'
 if (-not ($integration | Select-String '^Test')) { throw '没有发现 integration 测试' }
-go test -tags=integration ./projects/04-investment-community/reference/... -count=1
+$integrationOutput = go test -p=1 -tags=integration ./projects/04-investment-community/reference/... -count=1 -v
+$integrationOutput
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($integrationOutput | Select-String '^--- SKIP:') { throw 'integration 出现 SKIP' }
 
 $acceptance = go test -tags=acceptance ./projects/04-investment-community/acceptance -list '^Test'
 if (-not ($acceptance | Select-String '^Test')) { throw '没有发现 acceptance 测试' }
-go test -tags=acceptance ./projects/04-investment-community/acceptance -count=1
+$env:COMMUNITY_ACCEPTANCE_BASE_URL = 'http://127.0.0.1:8084'
+$env:COMMUNITY_ACCEPTANCE_ADMIN_PASSWORD = $env:COMMUNITY_ADMIN_PASSWORD
+$acceptanceOutput = go test -tags=acceptance ./projects/04-investment-community/acceptance -count=1 -v
+$acceptanceOutput
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($acceptanceOutput | Select-String '^--- SKIP:') { throw 'acceptance 出现 SKIP' }
 ```
 
-Go 在 `-run` 或 build tag 下没有匹配测试时也可能退出 0，所以 integration/acceptance 必须先 `-list` 并确认发现测试。最终还要从空 Compose volume 手工跑通“注册 → 加入/退出圈子 → 发帖 → 评论/回复通知 → 举报 → 隐藏通知与审计 → 恢复通知与审计”，不能用契约文件存在或零匹配测试代替真实验收。
+Go 在 `-run` 或 build tag 下没有匹配测试时也可能退出 0，所以 integration/acceptance 必须先 `-list` 并确认发现测试。`scripts/demo.ps1` 会通过 HTTP 跑通“注册 → 入圈 → 发帖 → 评论/回复通知 → 举报 → 隐藏通知与审计 → 恢复通知与审计”；它不会导入参考实现内部包。
 
 ## 安全约定
 
