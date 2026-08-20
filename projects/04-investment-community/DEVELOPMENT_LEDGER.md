@@ -9,8 +9,8 @@
 
 | 项目 | 当前值 |
 | --- | --- |
-| Git 仓库 | `C:\company\own\Go-own` |
-| 开发 worktree | `C:\Users\15234\.codex\visualizations\2026\08\19\01a0186e-78ea-7573-86a7-ef1dd016550d\stock-community-governance-3` |
+| Git 仓库 | `https://github.com/chasen2041maker/Go-own` |
+| 本机完整交付副本 | `C:\company\own\Go-own\dist\stock-community-final-clone` |
 | 分支 | `codex/stock-community-governance` |
 | 完成态 HEAD | `stock-v1/s08-done`（以 `git show -s --oneline stock-v1/s08-done` 为准） |
 | 当前 WIP | 无 |
@@ -19,7 +19,7 @@
 | 实施计划 | `docs/plans/2026-08-19-investment-community-implementation.md` |
 | API 事实源 | `projects/04-investment-community/contracts/openapi.yaml` |
 
-新对话必须切到上述 worktree，先读本总账、`HANDOFF.md`、规格、计划、阶段 07 教材和 OpenAPI；不要在 `main` 重做已完成代码。
+新对话在任意克隆中获取并切到 `codex/stock-community-governance`，先读本总账、`HANDOFF.md`、规格、计划、阶段 07 教材和 OpenAPI；不要在 `main` 重做已完成代码。本机也保留了上表所列的干净完整副本和 `dist/stock-community-governance-final.bundle`。
 
 ## 2. 已完成并提交
 
@@ -63,7 +63,7 @@ python $wikiScript check --root .
 
 上述本地命令均通过；integration 使用独立 `investment_community_test` 且无 SKIP。acceptance 使用演示库与独立 API 端口，显式调用全部 21 个 operationId，并覆盖注册、入圈、发帖/更新、评论/回复通知、举报、隐藏、审计、恢复及删除。
 
-远端发布树 `71e784c66fcdade3e20129e83cc036bca452e9ee` 与本地代码提交 `c140790` 的 Git tree SHA 同为 `8aa30b3af5ac79773dcfaff6fb1f4bbe7c54e0ca`。GitHub Actions [run 32352250415](https://github.com/chasen2041maker/Go-own/actions/runs/32352250415) 三个 job 全部通过：
+完整历史提交 `5529de3ce2feac41f49dffd916152af7cfa6c66d` 已发布到远端功能分支，Git tree SHA 为 `959190d50cec42cef19bd1cad92c2f78a8aacdba`。GitHub Actions [run 32353166640](https://github.com/chasen2041maker/Go-own/actions/runs/32353166640) 三个 job 全部通过：
 
 - `default`：Linux gofmt、项目默认测试、项目 vet/build；
 - `mysql-and-acceptance`：真实 MySQL 全量 integration 无 SKIP，迁移、Seed、API 就绪和 21 操作 HTTP acceptance；
